@@ -1,4 +1,6 @@
-#define UART_BASE 0x10000000UL  // 添加UL后缀表示unsigned long
+#include "types.h"
+
+#define UART_BASE 0x10000000UL
 
 // UART registers
 #define THR 0    // Transmit Holding Register
@@ -28,6 +30,13 @@ void uart_putc(char c)
     
     // Send the character
     uart_write_reg(THR, c);
+    
+    // If newline, also send carriage return (optional)
+    if (c == '\n') {
+        while ((uart_read_reg(LSR) & LSR_TX_IDLE) == 0)
+            ;
+        uart_write_reg(THR, '\r');
+    }
 }
 
 // Output a string
@@ -39,9 +48,9 @@ void uart_puts(char *s)
     }
 }
 
-// Simple UART initialization (minimal setup)
+// Simple UART initialization
 void uart_init(void)
 {
-    // For minimal setup, we rely on QEMU's default UART configuration
-    // Just ensure we can output characters
+    // QEMU's virt machine UART is already initialized
+    // This function is kept for future expansion
 }

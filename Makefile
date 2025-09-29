@@ -7,7 +7,8 @@ CFLAGS += -mcmodel=medany
 CFLAGS += -ffreestanding -fno-common -nostdlib -mno-relax
 CFLAGS += -Iinclude
 
-SRCS = kernel/entry.S kernel/main.c kernel/uart.c
+SRCS = kernel/entry.S kernel/main.c kernel/uart.c kernel/console.c kernel/printf.c kernel/color_printf.c
+
 OBJS = $(SRCS:.S=.o)
 OBJS := $(OBJS:.c=.o)
 DEPS = $(OBJS:.o=.d)
