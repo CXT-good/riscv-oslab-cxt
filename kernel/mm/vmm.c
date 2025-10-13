@@ -1,6 +1,7 @@
 // vmm.c 文件内容
 #include "mm.h"
 #include "printf.h"
+#include "console.h"
 
 // 内联的简单内存设置函数 - 使用 uint64_t 替代 size_t
 static inline void simple_memset(void* dst, char value, uint64_t n) {
@@ -73,10 +74,22 @@ pte_t* walk_lookup(pagetable_t pt, uint64_t va) {
 
 void dump_pagetable(pagetable_t pt) {
     printf("=== Page Table Dump ===\n");
-    for(int i = 0; i < 10; i++) { /* Only show first 10 entries for brevity */
+    for(int i = 0; i < 10; i++) {
         if(pt[i] & PTE_V) {
-            printf("PTE[%03d]: pa=0x%08llx perm=0x%llx\n",
-                   i, PTE_PA(pt[i]), pt[i] & 0xFF);
+            uint64_t pa = PTE_PA(pt[i]);
+            uint32_t perm = pt[i] & 0xFF;
+            
+            // 手动输出带前导零的三位数
+            console_puts("PTE[");
+            if (i < 10) {
+                console_puts("00");
+            } else if (i < 100) {
+                console_putc('0');
+            }
+            printf("%d", i);                // 输出数字本身
+            console_puts("]: pa=");
+            printf("%p", (void*)pa);        // 使用%p输出地址
+            printf(" perm=0x%x\n", perm);   // 权限用%x输出
         }
     }
 }
@@ -140,5 +153,5 @@ void kvminithart(void) {
     asm volatile("csrw satp, %0" : : "r"(satp));
     asm volatile("sfence.vma");
     
-    printf("VMM: virtual memory enabled (satp=0x%llx)\n", satp);
+    printf("VMM: virtual memory enabled (satp=%p)\n\n", (void*)satp);
 }

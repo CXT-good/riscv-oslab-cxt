@@ -21,7 +21,7 @@ extern int used_pages;
 
 /* ==================== 物理内存分配器测试 ==================== */
 void test_physical_memory(void) {
-    printf("\n=== Physical Memory Manager Test ===\n");
+    printf("=== Physical Memory Manager Test ===\n");
     
     // 测试基本分配和释放
     printf("1. Testing basic allocation and free...\n");
@@ -75,12 +75,12 @@ void test_physical_memory(void) {
     free_page(page2);
     if (page3) free_page(page3);
     
-    printf("✓ Physical memory test completed successfully!\n");
+    printf("✓ Physical memory test completed successfully!\n\n");
 }
 
 /* ==================== 页表功能测试 ==================== */
 void test_pagetable(void) {
-    printf("\n=== Page Table Functionality Test ===\n");
+    printf("=== Page Table Functionality Test ===\n");
     
     printf("1. Creating page table...\n");
     pagetable_t pt = create_pagetable();
@@ -100,7 +100,7 @@ void test_pagetable(void) {
         printf("   ERROR: Failed to allocate physical pages!\n");
         return;
     }
-    printf("   ✓ Physical pages allocated: 0x%llx, 0x%llx, 0x%llx\n", pa1, pa2, pa3);
+    printf("   ✓ Physical pages allocated: %p, %p, %p\n", (void*)pa1, (void*)pa2, (void*)pa3);
 
     // 测试基本映射
     printf("3. Testing basic page mapping...\n");
@@ -149,16 +149,12 @@ void test_pagetable(void) {
     free_page((void*)pa2);
     free_page((void*)pa3);
     
-    printf("✓ Page table test completed successfully!\n");
+    printf("✓ Page table test completed successfully!\n\n");
 }
 
 /* ==================== 主测试函数 ==================== */
 // 在 main.c 的 run_all_tests 函数中添加更多调试信息
 void run_all_tests(void) {
-    printf("\n========================================\n");
-    printf("    RISC-V OS Memory Management Tests   \n");
-    printf("========================================\n");
-    
     // 显示系统信息
     printf("System Information:\n");
     printf("  Kernel text: 0x80000000 - %p\n", (void*)etext);
@@ -177,10 +173,6 @@ void run_all_tests(void) {
     
     printf("\n=== Phase 3: Page Table Test ===\n");
     test_pagetable();
-    
-    printf("\n========================================\n");
-    printf("    BASIC MEMORY TESTS COMPLETED!       \n");
-    printf("========================================\n");
 }
 
 /* ==================== 主函数 ==================== */
@@ -194,17 +186,6 @@ int main(void) {
     
     // 运行所有测试
     run_all_tests();
-    
-    // 测试完成后进入主循环
-    printf("\nSystem ready. Entering main loop...\n");
-    
-    int counter = 0;
-    while(1) {
-        // 主系统循环 - 显示心跳
-        if (counter++ % 10000000 == 0) {
-            printf(".");
-        }
-    }
-    
+
     return 0;
 }
