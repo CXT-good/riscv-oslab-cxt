@@ -25,11 +25,11 @@ void console_puts(const char *s) {
     uart_puts((char*)s);
 }
 
-// 方案1：使用ANSI转义序列清屏（推荐）
+// 使用ANSI转义序列清屏
 void clear_screen(void) {
     console_puts("\033[2J");    // 清除整个屏幕
     console_puts("\033[H");     // 光标回到左上角
-     console_puts("\033[3J");    // 清除滚动缓冲区（某些终端需要）
+    console_puts("\033[3J");    // 清除滚动缓冲区（某些终端需要）
 }
 
 // 清除当前行
@@ -77,7 +77,7 @@ void console_flush(void) {
     for (volatile int i = 0; i < 1000; i++);
 }
 
-// 修改 goto_xy 函数
+// 修改 goto_xy 函数，x是列坐标，y是行坐标
 void goto_xy(int x, int y) {
     char buf[16];
     
@@ -95,9 +95,11 @@ void goto_xy(int x, int y) {
     int i = 0;
     int temp = y;
     do {
-        buf[i++] = '0' + (temp % 10);
+        //'0' + (temp % 10)：将数字转换为对应的ASCII字符，例如：数字5 → '0' + 5 = '5'
+        buf[i++] = '0' + (temp % 10);//逆序存储
         temp /= 10;
     } while (temp != 0);
+    //将逆序变成正序输出
     while (--i >= 0) {
         console_putc(buf[i]);
     }

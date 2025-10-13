@@ -5,7 +5,7 @@
 
 static char digits[] = "0123456789abcdef";
 
-// 数字转换函数
+// 数字转换函数，base是进制，sign是是否处理符号
 static void print_number(long long num, int base, int sign) {
     char buf[64];
     int i = 0;

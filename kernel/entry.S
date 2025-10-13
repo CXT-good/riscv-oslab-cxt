@@ -22,6 +22,13 @@ clear_bss_loop:
 clear_bss_loop_test:
         blt a0, a1, clear_bss_loop  # Continue until end of BSS
 
+        # Initialize memory management system first
+        call pmm_init           # Initialize physical memory manager
+        call kvminit            # Create kernel page table
+        
+        # Enable virtual memory
+        call kvminithart        # Enable paging
+
         # Jump to C main function
         call main
 

@@ -3,38 +3,37 @@ ENTRY(_entry)
 
 SECTIONS
 {
-  . = 0x80000000;               /* QEMU kernel load address */
+  . = 0x80000000;
 
   .text : {
-    *(.text .text.*)            /* All text sections */
-    PROVIDE(etext = .);         /* End of text */
+    *(.text .text.*)
+    PROVIDE(etext = .);
   }
 
   .rodata : {
-    *(.rodata .rodata.*)        /* Read-only data */
+    *(.rodata .rodata.*)
     *(.srodata .srodata.*)
   }
 
   .data : {
-    *(.data .data.*)            /* Initialized data */
+    *(.data .data.*)
     *(.sdata .sdata.*)
   }
 
   .bss : {
     . = ALIGN(16);
-    _bss_start = .;             /* Start of BSS */
-    *(.bss .bss.*)              /* Uninitialized data */
+    _bss_start = .;
+    *(.bss .bss.*)
     *(.sbss .sbss.*)
     . = ALIGN(16);
-    _bss_end = .;               /* End of BSS */
+    _bss_end = .;
   }
 
-  PROVIDE(end = .);             /* End of kernel */
+  PROVIDE(end = .);
 
-  /* Stack space */
   .stack : {
     . = ALIGN(16);
     stack0 = .;
-    . += 4096;                  /* 4KB stack */
+    . += 4096;
   }
 }

@@ -4,9 +4,9 @@
 #include "colors.h"  // 包含颜色定义
 #include <stdarg.h>
 
-// 带颜色的printf函数
+// 带颜色的printf函数，color：文本颜色代码，fmt：格式字符串
 void printf_color(int color, const char *fmt, ...) {
-    va_list ap;
+    va_list ap;//声明可变参数列表变量ap
     
     // 设置颜色
     set_color(color);
@@ -19,6 +19,7 @@ void printf_color(int color, const char *fmt, ...) {
     char *s;
     
     for(i = 0; (c = fmt[i]) != '\0'; i++) {
+        //如果不是格式说明符%，直接输出字符并继续循环
         if(c != '%') {
             console_putc(c);
             continue;
@@ -26,6 +27,7 @@ void printf_color(int color, const char *fmt, ...) {
         
         i++; // 跳过'%'
         
+        //检查格式字符串是否意外结束，如果是则输出%并退出
         if(fmt[i] == '\0') {
             console_putc('%');
             break;
@@ -33,12 +35,13 @@ void printf_color(int color, const char *fmt, ...) {
         
         switch(fmt[i]) {
             case 'd': { // 有符号十进制
-                int num = va_arg(ap, int);
+                int num = va_arg(ap, int); //从可变参数列表中提取一个int类型的参数
                 char buf[32];
                 int j = 0;
                 unsigned int x;
                 int sign = 0;
                 
+                //处理负数
                 if(num < 0) {
                     sign = 1;
                     x = -num;
@@ -46,6 +49,7 @@ void printf_color(int color, const char *fmt, ...) {
                     x = num;
                 }
                 
+                //逆序存储
                 do {
                     buf[j++] = '0' + (x % 10);
                     x /= 10;
@@ -55,6 +59,7 @@ void printf_color(int color, const char *fmt, ...) {
                     buf[j++] = '-';
                 }
                 
+                //正序输出
                 while(--j >= 0) {
                     console_putc(buf[j]);
                 }
@@ -71,6 +76,7 @@ void printf_color(int color, const char *fmt, ...) {
                 break;
                 
             case 'c': // 字符
+                //获取字符（在可变参数中char被提升为int）
                 console_putc((char)va_arg(ap, int));
                 break;
                 
