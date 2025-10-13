@@ -1,3 +1,4 @@
+//串口硬件驱动程序
 #include "types.h"
 
 #define UART_BASE 0x10000000UL

@@ -1,3 +1,4 @@
+//终端控制台驱动程序
 #include "types.h"
 #include "console.h"
 
@@ -25,7 +26,7 @@ void console_puts(const char *s) {
     uart_puts((char*)s);
 }
 
-// 方案1：使用ANSI转义序列清屏（推荐）
+// 使用ANSI转义序列清屏
 void clear_screen(void) {
     console_puts("\033[2J");    // 清除整个屏幕
     console_puts("\033[H");     // 光标回到左上角
@@ -121,7 +122,7 @@ void goto_xy(int x, int y) {
     console_flush();
 }
 
-// 设置文本颜色
+// 设置文本颜色 \033[code m
 void set_color(int color) {
     char buf[8];
     console_puts("\033[");

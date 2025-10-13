@@ -43,10 +43,10 @@ static void print_pointer(uint64_t ptr) {
 
 // 主printf函数
 int printf(const char *fmt, ...) {
-    va_list ap;
+    va_list ap;   // 可变参数列表指针，用于访问不定数量的参数
     int i;
     char c;
-    char *s;
+    char *s;      // 临时字符串指针，用于处理%s格式
     
     va_start(ap, fmt);
     
