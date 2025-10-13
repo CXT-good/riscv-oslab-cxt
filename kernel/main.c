@@ -153,21 +153,21 @@ void main(void) {
     // Initialize console system
     console_init();
 
-    test_printf_basic(); //基本格式化功能
-    test_printf_edge_cases();//边界条件处理
-    test_printf_errors();// 错误恢复测试
-    test_printf_comprehensive();//综合测试
+    // test_printf_basic(); //基本格式化功能
+    // test_printf_edge_cases();//边界条件处理
+    // test_printf_errors();// 错误恢复测试
+    // test_printf_comprehensive();//综合测试
     
-    //清屏测试
-    printf("=== Phase 1: Basic Clear Screen Test ===\n");
-    printf("This screen will be cleared in 2 seconds...\n");
+    // //清屏测试
+    // printf("=== Phase 1: Basic Clear Screen Test ===\n");
+    // printf("This screen will be cleared in 2 seconds...\n");
     
-    for (volatile int i = 0; i < 2000000; i++);
+    // for (volatile int i = 0; i < 2000000; i++);
     
-    clear_screen();
-    for (volatile int i = 0; i < 2000000; i++);
+    // clear_screen();
+    // for (volatile int i = 0; i < 2000000; i++);
 
-    printf("Screen cleared! Now testing advanced features...\n\n");
+    // printf("Screen cleared! Now testing advanced features...\n\n");
     
     // test_colors();//颜色输出功能
     // test_cursor_positioning();//光标定位
