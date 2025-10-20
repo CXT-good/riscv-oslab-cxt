@@ -110,7 +110,7 @@ void test_pagetable(void) {
     
     int result1 = map_page(pt, va1, pa1, PTE_R | PTE_W);
     int result2 = map_page(pt, va2, pa2, PTE_R | PTE_X);
-    int result3 = map_page(pt, va3, pa3, PTE_R | PTE_W | PTE_X);
+    int result3 = map_page(pt, va3, pa3, PTE_R );
     
     printf("   Mapping results: %d, %d, %d\n", result1, result2, result3);
     
