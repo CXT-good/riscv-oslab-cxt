@@ -7,9 +7,9 @@ CFLAGS += -mcmodel=medany
 CFLAGS += -ffreestanding -fno-common -nostdlib -mno-relax
 CFLAGS += -Iinclude
 
-# 添加内存管理模块到源文件列表
+# 修正源文件路径
 SRCS = kernel/entry.S kernel/main.c kernel/uart.c kernel/console.c kernel/printf.c kernel/color_printf.c \
-       kernel/mm/pmm.c kernel/mm/vmm.c
+       kernel/mm/pmm.c kernel/mm/vmm.c kernel/mm/buddy.c
 
 OBJS = $(SRCS:.S=.o)
 OBJS := $(OBJS:.c=.o)

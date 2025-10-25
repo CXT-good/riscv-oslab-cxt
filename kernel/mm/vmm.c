@@ -4,6 +4,7 @@
 #include "console.h"
 
 // 内联的简单内存设置函数 - 使用 uint64_t 替代 size_t
+// 将指定内存区域填充为特定值
 static inline void simple_memset(void* dst, char value, uint64_t n) {
     char* ptr = (char*)dst;
     for (uint64_t i = 0; i < n; i++) {
@@ -119,6 +120,7 @@ static pagetable_t kernel_pagetable = NULL;
 extern char etext[];  /* Defined in kernel.ld */
 
 // 映射连续区域的辅助函数 - 改进版本
+//pt: 目标页表指针，va: 起始虚拟地址，pa: 起始物理地址
 static int map_region(pagetable_t pt, uint64_t va, uint64_t pa, uint64_t size, int perm) {
     if (size == 0) {
         return 0;  // 大小为0，不需要映射
@@ -145,10 +147,10 @@ static int map_region(pagetable_t pt, uint64_t va, uint64_t pa, uint64_t size, i
             printf("VMM: page %p already mapped with perm 0x%x, need 0x%x\n", 
                    (void*)page_va, (int)(*existing_pte & 0xFF), perm);
             
-            // 如果权限不同，可能需要重新映射
-            if ((*existing_pte & 0xFF) != perm) {
-                printf("VMM: WARNING: permission conflict on page %p\n", (void*)page_va);
-            }
+            // // 如果权限不同，可能需要重新映射
+            // if ((*existing_pte & 0xFF) != perm) {
+            //     printf("VMM: WARNING: permission conflict on page %p\n", (void*)page_va);
+            // }
             continue;
         }
         

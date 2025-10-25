@@ -4,10 +4,12 @@
 // 移除 #include "spinlock.h"
 
 #define PMM_MAX_PAGES   512     /* Manage 2MB memory */
-
-/* Declare the linker-provided kernel_base symbol and compute PHYSTOP as an address */
-uint64_t kernel_base = 0x80000000;
 #define PHYSTOP ((uint64_t)kernel_base + 128*1024*1024)
+
+extern uint64_t kernel_base ;
+
+
+#define CACHE_POOL_SIZE   16     // 预分配缓存池大小
 
 struct page {
     struct page* next;// 页结构体，仅包含指向下一页的指针
@@ -19,6 +21,7 @@ static uint64_t pmm_base;// 物理内存管理区域的起始地址
 static uint64_t pmm_end;// 物理内存管理区域的结束地址
  int total_pages = 0;// 总页数
  int used_pages = 0;// 已使用页数
+
 
 void pmm_init(void) {
     /* Available memory: from end of kernel to 0x80400000 */
@@ -71,4 +74,79 @@ void free_page(void* page) {
     p->next = free_list;// 将释放的页插入到空闲链表头部
     free_list = p;// 更新链表头指针
     used_pages--;// 减少已使用页数计数
+}
+
+void* alloc_pages(int count) {
+    if (count <= 0) return NULL;
+    if (count == 1) return alloc_page(); // 单页直接使用原有逻辑
+    
+    // 简单实现：遍历空闲链表寻找连续页面
+    // 注意：这在实际系统中效率较低，建议使用更高效的数据结构
+    struct page *prev = NULL;
+    struct page *current = free_list;
+    struct page *start = NULL;
+    int found_count = 0;
+    
+    while (current != NULL) {
+        // 检查是否连续
+        if (found_count == 0) {
+            start = current;
+            found_count = 1;
+        } else if ((uint64_t)current == (uint64_t)start + found_count * PAGE_SIZE) {
+            found_count++;
+        } else {
+            // 不连续，重新开始计数
+            start = current;
+            found_count = 1;
+        }
+        
+        // 找到足够数量的连续页面
+        if (found_count == count) {
+            // 从空闲链表中移除这些页面
+            if (prev == NULL) {
+                free_list = current->next;
+            } else {
+                prev->next = current->next;
+            }
+            
+            used_pages += count;
+            
+            // 清零所有分配的页面
+            for (int i = 0; i < count; i++) {
+                void* page_addr = (void*)((uint64_t)start + i * PAGE_SIZE);
+                for (uint64_t j = 0; j < PAGE_SIZE; j += sizeof(uint64_t)) {
+                    *(volatile uint64_t*)((char*)page_addr + j) = 0;
+                }
+            }
+            
+            return (void*)start;
+        }
+        
+        prev = current;
+        current = current->next;
+    }
+    
+    printf("PMM: failed to allocate %d contiguous pages\n", count);
+    return NULL;
+}
+
+
+void free_pages(void* start, int count) {
+    if (start == NULL || count <= 0) return;
+    
+    // 验证地址对齐
+    if ((uint64_t)start % PAGE_SIZE != 0) {
+        printf("PMM: free_pages: unaligned address %p\n", start);
+        return;
+    }
+    
+    // 将页面逐个添加到空闲链表头部
+    for (int i = count - 1; i >= 0; i--) {
+        void* page_addr = (void*)((uint64_t)start + i * PAGE_SIZE);
+        struct page* p = (struct page*)page_addr;
+        p->next = free_list;
+        free_list = p;
+    }
+    
+    used_pages -= count;
 }

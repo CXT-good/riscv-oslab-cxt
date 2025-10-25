@@ -2,13 +2,16 @@
 #include "printf.h"
 #include "console.h"
 #include "mm.h"
-
+#include <stddef.h>
 // 外部符号声明
 extern char etext[], end[];
 
 // 添加 PMM 统计变量的外部声明
 extern int total_pages;
 extern int used_pages;
+
+// 在这里定义 kernel_base
+uint64_t kernel_base = 0x80000000;
 
 // 简单的断言宏
 #define assert(condition) \
@@ -58,7 +61,7 @@ void test_physical_memory(void) {
     void *page3 = alloc_page();
     
     printf("   Reallocated page: page3=%p (original page1=%p)\n", page3, page1);
-    // page3 可能等于 page1（取决于分配策略）
+    // page3 等于 page1（后进先出分配策略）
     
     if (page3) {
         // 测试重新分配的页面是清零的
@@ -152,6 +155,133 @@ void test_pagetable(void) {
     printf("✓ Page table test completed successfully!\n\n");
 }
 
+// void test_advanced_allocators(void) {
+//     printf("=== Advanced Allocators Test ===\n");
+    
+//     printf("1. Initializing buddy system...\n");
+//     buddy_init();
+//     printf("   ✓ Buddy system initialized\n");
+    
+//     // printf("2. Initializing slab allocator...\n");
+//     // slab_init();
+//     // printf("   ✓ Slab allocator initialized\n");
+    
+//     // printf("3. Prefetching cache...\n");
+//     // prefetch_cache(8);
+//     // printf("   ✓ Cache prefetched\n");
+    
+//     printf("4. Testing batch allocation...\n");
+//     void* batch_pages = alloc_pages(4);
+//     if (batch_pages) {
+//         printf("   ✓ Allocated 4 contiguous pages at %p\n", batch_pages);
+//         free_pages(batch_pages, 4);
+//         printf("   ✓ Freed 4 contiguous pages\n");
+//     } else {
+//         printf("   ✗ Failed to allocate 4 contiguous pages\n");
+//     }
+    
+//     printf("5. Testing fast cache allocation...\n");
+//     void* fast_page1 = alloc_page_fast();
+//     void* fast_page2 = alloc_page_fast();
+//     printf("   ✓ Fast allocated pages: %p, %p\n", fast_page1, fast_page2);
+    
+//     if (fast_page1) free_page_fast(fast_page1);
+//     if (fast_page2) free_page_fast(fast_page2);
+//     printf("   ✓ Fast freed pages\n");
+    
+//     printf("6. Testing slab allocation...\n");
+//     void* small_obj = slab_alloc(64);
+//     if (small_obj) {
+//         printf("   ✓ Slab allocated small object at %p\n", small_obj);
+//         slab_free(small_obj);
+//         printf("   ✓ Slab freed small object\n");
+//     } else {
+//         printf("   ✗ Failed to allocate small object via slab\n");
+//     }
+    
+//     printf("7. Getting cache statistics...\n");
+//     get_cache_stats();
+//     printf("✓ Advanced allocators test completed!\n\n");
+// }
+
+// 在 kernel/main.c 中更新测试函数
+void test_buddy_system(void) {
+    printf("=== Buddy System Comprehensive Test ===\n");
+    
+    // 初始化伙伴系统
+    printf("1. Initializing buddy system...\n");
+    buddy_init();
+    buddy_dump();
+    
+    // 测试不同阶数的分配
+    printf("2. Testing allocations of different orders...\n");
+    void *blocks[BUDDY_MAX_ORDER + 1] = {0};
+    
+    // 分配一些小阶数的块
+    for (int order = 0; order <= 2; order++) {
+        printf("   Allocating order %d...\n", order);
+        blocks[order] = buddy_alloc(order);
+        if (blocks[order]) {
+            printf("   ✓ Allocated order %d (%d pages) at %p\n", 
+                   order, 1 << order, blocks[order]);
+        } else {
+            printf("   ✗ Failed to allocate order %d\n", order);
+        }
+        buddy_dump();
+    }
+    
+    // 测试释放和合并
+    printf("3. Testing free and merge...\n");
+    for (int order = 0; order <= 2; order++) {
+        if (blocks[order]) {
+            printf("   Freeing order %d at %p...\n", order, blocks[order]);
+            buddy_free(blocks[order], order);
+            printf("   ✓ Freed order %d\n", order);
+            blocks[order] = NULL;
+            buddy_dump();
+        }
+    }
+    
+    // 测试连续分配和释放
+    printf("4. Testing continuous allocation pattern...\n");
+    void *test_blocks[4];
+    for (int i = 0; i < 4; i++) {
+        test_blocks[i] = buddy_alloc(0);  // 分配4个单页
+        if (test_blocks[i]) {
+            printf("   ✓ Allocated single page %d at %p\n", i, test_blocks[i]);
+        } else {
+            printf("   ✗ Failed to allocate single page %d\n", i);
+        }
+    }
+    buddy_dump();
+    
+    // 释放一些块创建碎片
+    printf("5. Creating fragmentation...\n");
+    buddy_free(test_blocks[1], 0);
+    buddy_free(test_blocks[3], 0);
+    printf("   Freed pages 1 and 3 to create fragmentation\n");
+    buddy_dump();
+    
+    // 分配一个2页的块，应该能够合并碎片
+    printf("6. Testing merge by allocating 2-page block...\n");
+    void *two_page_block = buddy_alloc(1);
+    if (two_page_block) {
+        printf("   ✓ Allocated 2-page block at %p (demonstrates merge)\n", two_page_block);
+        buddy_free(two_page_block, 1);
+        printf("   ✓ Freed 2-page block\n");
+    } else {
+        printf("   ✗ Failed to allocate 2-page block\n");
+    }
+    buddy_dump();
+    
+    // 清理剩余块
+    buddy_free(test_blocks[0], 0);
+    buddy_dump();
+    buddy_free(test_blocks[2], 0);
+    buddy_dump();
+    
+    printf("✓ Buddy system test completed successfully!\n\n");
+}
 /* ==================== 主测试函数 ==================== */
 // 在 main.c 的 run_all_tests 函数中添加更多调试信息
 void run_all_tests(void) {
@@ -186,6 +316,10 @@ int main(void) {
     
     // 运行所有测试
     run_all_tests();
+
+    // test_advanced_allocators();
+
+    test_buddy_system();
 
     return 0;
 }
