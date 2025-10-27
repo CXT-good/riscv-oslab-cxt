@@ -28,7 +28,7 @@
 #define VA2VPN(va, level) (((va) >> (12 + 9 * (level))) & 0x1FF)
 
 /* 分级分配器配置 */
-#define BUDDY_MAX_ORDER   8      // 最大阶数：2^8 = 256页 = 1MB
+#define BUDDY_MAX_ORDER   8      // 最大阶数：2^10 = 1024页 = 4MB
 #define BUDDY_MIN_ORDER   0      // 最小阶数：2^0 = 1页 = 4KB
 
 /* 链表结构定义 - 必须放在最前面 */

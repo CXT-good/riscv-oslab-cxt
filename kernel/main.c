@@ -155,7 +155,7 @@ void test_pagetable(void) {
     printf("✓ Page table test completed successfully!\n\n");
 }
 
-// 测试函数
+// 伙伴系统测试函数
 void test_buddy_system(void) {
     printf("=== Buddy System Comprehensive Test ===\n");
     
@@ -209,15 +209,17 @@ void test_buddy_system(void) {
     // 释放一些块创建碎片
     printf("5. Creating fragmentation...\n");
     buddy_free(test_blocks[1], 0);
+    buddy_dump();
     buddy_free(test_blocks[3], 0);
     printf("   Freed pages 1 and 3 to create fragmentation\n");
     buddy_dump();
     
-    // 分配一个2页的块，应该能够合并碎片
+    // 分配一个2页的块
     printf("6. Testing merge by allocating 2-page block...\n");
     void *two_page_block = buddy_alloc(1);
     if (two_page_block) {
         printf("   ✓ Allocated 2-page block at %p (demonstrates merge)\n", two_page_block);
+        buddy_dump();
         buddy_free(two_page_block, 1);
         printf("   ✓ Freed 2-page block\n");
     } else {
