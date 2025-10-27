@@ -155,56 +155,7 @@ void test_pagetable(void) {
     printf("✓ Page table test completed successfully!\n\n");
 }
 
-// void test_advanced_allocators(void) {
-//     printf("=== Advanced Allocators Test ===\n");
-    
-//     printf("1. Initializing buddy system...\n");
-//     buddy_init();
-//     printf("   ✓ Buddy system initialized\n");
-    
-//     // printf("2. Initializing slab allocator...\n");
-//     // slab_init();
-//     // printf("   ✓ Slab allocator initialized\n");
-    
-//     // printf("3. Prefetching cache...\n");
-//     // prefetch_cache(8);
-//     // printf("   ✓ Cache prefetched\n");
-    
-//     printf("4. Testing batch allocation...\n");
-//     void* batch_pages = alloc_pages(4);
-//     if (batch_pages) {
-//         printf("   ✓ Allocated 4 contiguous pages at %p\n", batch_pages);
-//         free_pages(batch_pages, 4);
-//         printf("   ✓ Freed 4 contiguous pages\n");
-//     } else {
-//         printf("   ✗ Failed to allocate 4 contiguous pages\n");
-//     }
-    
-//     printf("5. Testing fast cache allocation...\n");
-//     void* fast_page1 = alloc_page_fast();
-//     void* fast_page2 = alloc_page_fast();
-//     printf("   ✓ Fast allocated pages: %p, %p\n", fast_page1, fast_page2);
-    
-//     if (fast_page1) free_page_fast(fast_page1);
-//     if (fast_page2) free_page_fast(fast_page2);
-//     printf("   ✓ Fast freed pages\n");
-    
-//     printf("6. Testing slab allocation...\n");
-//     void* small_obj = slab_alloc(64);
-//     if (small_obj) {
-//         printf("   ✓ Slab allocated small object at %p\n", small_obj);
-//         slab_free(small_obj);
-//         printf("   ✓ Slab freed small object\n");
-//     } else {
-//         printf("   ✗ Failed to allocate small object via slab\n");
-//     }
-    
-//     printf("7. Getting cache statistics...\n");
-//     get_cache_stats();
-//     printf("✓ Advanced allocators test completed!\n\n");
-// }
-
-// 在 kernel/main.c 中更新测试函数
+// 测试函数
 void test_buddy_system(void) {
     printf("=== Buddy System Comprehensive Test ===\n");
     
@@ -316,8 +267,6 @@ int main(void) {
     
     // 运行所有测试
     run_all_tests();
-
-    // test_advanced_allocators();
 
     test_buddy_system();
 
