@@ -1,4 +1,4 @@
-// kernel/printf.c
+// kernel/printf.c - 修复版本
 #include "types.h"
 #include "printf.h"
 #include "console.h"
@@ -74,6 +74,9 @@ int printf(const char *fmt, ...) {
                     } else if (fmt[i] == 'x') {
                         // %llx
                         print_number(va_arg(ap, uint64_t), 16, 0);
+                    } else if (fmt[i] == 'd') {
+                        // %lld
+                        print_number(va_arg(ap, int64_t), 10, 1);
                     } else {
                         console_putc('%');
                         console_putc('l');
@@ -81,9 +84,21 @@ int printf(const char *fmt, ...) {
                         console_putc(fmt[i]);
                     }
                 } else {
-                    console_putc('%');
-                    console_putc('l');
-                    console_putc(fmt[i]);
+                    // 处理 %lx 和 %ld
+                    if (fmt[i] == 'x') {
+                        // %lx - 长十六进制
+                        print_number(va_arg(ap, unsigned long), 16, 0);
+                    } else if (fmt[i] == 'd') {
+                        // %ld - 长十进制
+                        print_number(va_arg(ap, long), 10, 1);
+                    } else if (fmt[i] == 'u') {
+                        // %lu - 长无符号十进制
+                        print_number(va_arg(ap, unsigned long), 10, 0);
+                    } else {
+                        console_putc('%');
+                        console_putc('l');
+                        console_putc(fmt[i]);
+                    }
                 }
                 break;
                 

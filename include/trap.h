@@ -31,7 +31,7 @@
 #define IRQ_H_EXT     10
 #define IRQ_M_EXT     11
 
-// 寄存器上下文结构
+// 陷阱上下文结构
 struct trap_context {
     uint64_t ra;
     uint64_t sp;
@@ -64,8 +64,11 @@ struct trap_context {
     uint64_t t4;
     uint64_t t5;
     uint64_t t6;
+    
+    // 特殊寄存器
     uint64_t mepc;
     uint64_t mstatus;
+    uint64_t mtval;
 };
 
 // 函数声明

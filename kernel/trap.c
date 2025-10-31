@@ -1,83 +1,89 @@
-// kernel/trap.c
+// kernel/trap.c - 修复版本
 #include "trap.h"
 #include "printf.h"
 #include "clock.h"
 #include "uart.h"
+#include "exception.h"
 
-// static char last_fast_char = '1';
-// static char last_medium_char = 'A';
-// static char last_slow_char = 'a';
+// 完整的异常原因定义
+static const char* trap_cause_names[] = {
+    "instruction address misaligned",
+    "instruction access fault", 
+    "illegal instruction",
+    "breakpoint",
+    "load address misaligned",
+    "load access fault",
+    "store/AMO address misaligned", 
+    "store/AMO access fault",
+    "environment call from U-mode",
+    "environment call from S-mode",
+    "reserved",
+    "environment call from M-mode", 
+    "instruction page fault",
+    "load page fault",
+    "reserved", 
+    "store/AMO page fault"
+};
 
-// 最简单的中断初始化
-void trap_init(void) {
-    extern void trap_vector(void);
-    asm volatile("csrw mtvec, %0" : : "r" ((uint64_t)trap_vector));
-    printf("Trap: mtvec set\n");
-}
-
-void enable_interrupts(void) {
-    // 空实现
-}
-
-void disable_interrupts(void) {
-    // 空实现
-}
-
-// 中断处理函数 - 支持多个定时器
+// kernel/trap.c - 修复 printf 格式
 void trap_handler(struct trap_context *ctx) {
+    // 读取陷阱原因
     uint64_t cause;
     asm volatile("csrr %0, mcause" : "=r" (cause));
     
+    // 读取 mtval
+    asm volatile("csrr %0, mtval" : "=r" (ctx->mtval));
+    
+    // 修复：使用正确的格式说明符
+    printf("TRAP: cause=0x%lx, mepc=%p, mtval=%p\n", 
+           cause, (void*)ctx->mepc, (void*)ctx->mtval);
+    
+    // 判断是中断还是异常
     if (cause & 0x8000000000000000) {
-        // 中断
-        int code = cause & 0x7FFFFFFFFFFFFFFF;
+        // 中断处理
+        int int_code = cause & 0x7FFFFFFFFFFFFFFF;
+        printf("INTERRUPT: code=%d\n", int_code);
         
-        if (code == 7) {
-            // 时钟中断
-            clock_set_next_event();
-            
-            // 获取三个定时器的当前ticks
-            uint64_t fast_ticks = get_ticks(TIMER_FAST);
-            uint64_t medium_ticks = get_ticks(TIMER_MEDIUM);
-            uint64_t slow_ticks = get_ticks(TIMER_SLOW);
-            
-            // 快速定时器：输出数字和符号
-            if (fast_ticks > 0) {
-                if (fast_ticks <= 10) {
-                    uart_putc('0' + fast_ticks);
-                } else {
-                    // 循环输出符号
-                    switch ((fast_ticks - 1) % 4) {
-                        case 0: uart_putc('+'); break;
-                        case 1: uart_putc('-'); break;
-                        case 2: uart_putc('*'); break;
-                        case 3: uart_putc('/'); break;
-                    }
-                }
-            }
-            
-            // 中等定时器：输出大写字母
-            if (medium_ticks > 0 && medium_ticks % 5 == 0) {
-                uart_putc('A' + ((medium_ticks / 5 - 1) % 26));
-            }
-            
-            // 慢速定时器：输出小写字母
-            if (slow_ticks > 0 && slow_ticks % 3 == 0) {
-                uart_putc('a' + ((slow_ticks / 3 - 1) % 26));
-            }
-            
-        } else {
-            // 其他中断 - 忽略
+        switch (int_code) {
+            case 7: // 定时器中断
+                printf("\nTIMER interrupt - handling\n");
+                clock_set_next_event();
+                break;
+            default:
+                printf("Unknown interrupt: %d\n", int_code);
+                break;
         }
     } else {
-        // 异常
-        int code = cause;
-        printf("\n*** EXCEPTION %d ***\n", code);
-        printf("mepc: %p\n", (void*)ctx->mepc);
-        printf("Stopping execution.\n");
+        // 异常处理
+        int exc_code = cause & 0xF;
         
-        while(1) {
-            asm volatile("wfi");
-        }
+        // 显示异常信息
+        printf("EXCEPTION: %d - %s\n", exc_code, 
+               exc_code < 16 ? trap_cause_names[exc_code] : "unknown");
+        
+        // 调用异常处理模块
+        handle_exception(ctx, cause);
+        
+        printf("Exception handled, new mepc=%p\n", (void*)ctx->mepc);
     }
+}
+
+// 简化陷阱初始化
+void trap_init(void) {
+    extern void trap_vector(void);
+    uint64_t mtvec_value = (uint64_t)trap_vector;
+    
+    // 设置直接模式（bit 0 = 0）
+    asm volatile("csrw mtvec, %0" : : "r" (mtvec_value));
+    printf("Trap: mtvec set to %p (direct mode)\n", (void*)mtvec_value);
+}
+
+void enable_interrupts(void) {
+    asm volatile("csrs mstatus, %0" : : "r" (1 << 3)); // MIE
+    asm volatile("csrs mie, %0" : : "r" (1 << 7));     // MTIE
+    printf("Interrupts enabled\n");
+}
+
+void disable_interrupts(void) {
+    asm volatile("csrc mstatus, %0" : : "r" (1 << 3)); // MIE
 }

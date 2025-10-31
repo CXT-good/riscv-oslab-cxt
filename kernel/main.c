@@ -6,6 +6,7 @@
 #include "clock.h"
 #include "uart.h"
 #include "mm.h"
+#include "exception.h"
 
 int main(void) {
     console_init();
@@ -20,7 +21,15 @@ int main(void) {
     kvminithart();
     
     printf("System initialized successfully.\n\n");
+      
+    // 先初始化陷阱处理，再测试异常
+    printf("Initializing trap handler...\n");
+    trap_init();
+
+    // 运行异常处理测试
+    test_exception_handling();
     
+
     // UART输入测试
     printf("=== UART Input Test ===\n");
     printf("Type a character to verify UART: ");
@@ -37,7 +46,7 @@ int main(void) {
     
     // 初始化中断系统
     printf("=== Three Speed Timer Test ===\n");
-    trap_init();
+    // trap_init();
     clock_init();
     
     // 启用中断
@@ -66,7 +75,7 @@ int main(void) {
         
         // 显示实时计数（每秒更新一次）
         if (fast_ticks != last_fast || medium_ticks != last_medium || slow_ticks != last_slow) {
-            printf("\rFAST: %llu ticks | MEDIUM: %llu ticks | SLOW: %llu ticks", 
+            printf("FAST: %lu ticks | MEDIUM: %lu ticks | SLOW: %lu ticks\n", 
                    fast_ticks, medium_ticks, slow_ticks);
             last_fast = fast_ticks;
             last_medium = medium_ticks;
