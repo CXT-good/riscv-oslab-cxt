@@ -1,3 +1,4 @@
+
 CC = riscv64-unknown-elf-gcc
 LD = riscv64-unknown-elf-ld
 OBJCOPY = riscv64-unknown-elf-objcopy
@@ -7,17 +8,34 @@ CFLAGS += -mcmodel=medany
 CFLAGS += -ffreestanding -fno-common -nostdlib -mno-relax
 CFLAGS += -Iinclude
 
-# 修正源文件路径
-SRCS = kernel/entry.S kernel/main.c kernel/uart.c kernel/console.c kernel/printf.c kernel/color_printf.c \
-       kernel/mm/pmm.c kernel/mm/vmm.c kernel/mm/buddy.c
+# 显式列出所有对象文件
+OBJS = \
+    kernel/entry.o \
+    kernel/test_main.o \
+    kernel/uart.o \
+    kernel/console.o \
+    kernel/printf.o \
+    kernel/color_printf.o \
+    kernel/mm/pmm.o \
+    kernel/mm/vmm.o \
+    kernel/mm/buddy.o \
+	kernel/sbi.o \
+    kernel/trap.o \
+    kernel/trap_c.o  # 显式添加 trap_c.o
 
-OBJS = $(SRCS:.S=.o)
-OBJS := $(OBJS:.c=.o)
 DEPS = $(OBJS:.o=.d)
 
 kernel.elf: $(OBJS) kernel/kernel.ld
 	$(CC) $(CFLAGS) -T kernel/kernel.ld -o $@ $(OBJS) -lgcc
 
+# 显式规则
+kernel/trap.o: kernel/trap.S
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+kernel/trap_c.o: kernel/trap.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+# 通用规则
 %.o: %.S
 	$(CC) $(CFLAGS) -c -o $@ $<
 
@@ -28,9 +46,8 @@ qemu: kernel.elf
 	qemu-system-riscv64 -machine virt -nographic -bios none -kernel kernel.elf
 
 clean:
-	rm -f *.elf $(OBJS) $(DEPS) kernel/mm/*.d
+	rm -f *.elf $(OBJS) $(DEPS) kernel/mm/*.d kernel/*.d
 
-# Include dependencies
 -include $(DEPS)
 
 .PHONY: qemu clean

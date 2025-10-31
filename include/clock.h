@@ -1,8 +1,15 @@
+
 // kernel/clock.h
 #ifndef _CLOCK_H_
 #define _CLOCK_H_
 
 #include "types.h"
+#include "clint.h"
+
+// 读取时间计数器 - 使用CLINT
+static inline uint64_t get_time(void) {
+    return clint_get_time();
+}
 
 // 读取时钟周期计数器
 static inline uint64_t get_cycles(void) {
@@ -10,31 +17,14 @@ static inline uint64_t get_cycles(void) {
     #ifdef __riscv
     asm volatile ("rdcycle %0" : "=r" (cycles));
     #else
-    cycles = 0;  // 非RISC-V平台的备用实现
+    cycles = 0;
     #endif
     return cycles;
 }
 
-// 读取时间计数器（如果支持）
-static inline uint64_t get_time(void) {
-    uint64_t time;
-    #ifdef __riscv
-    asm volatile ("rdtime %0" : "=r" (time));
-    #else
-    time = 0;
-    #endif
-    return time;
-}
-
-// 读取指令计数器
-static inline uint64_t get_instret(void) {
-    uint64_t instret;
-    #ifdef __riscv
-    asm volatile ("rdinstret %0" : "=r" (instret));
-    #else
-    instret = 0;
-    #endif
-    return instret;
+// 设置定时器 - 使用CLINT
+static inline void set_timer(uint64_t time) {
+    clint_set_timer(time);
 }
 
 #endif

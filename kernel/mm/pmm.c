@@ -4,7 +4,8 @@
 // 移除 #include "spinlock.h"
 
 #define PMM_MAX_PAGES   512     /* Manage 2MB memory */
-#define PHYSTOP ((uint64_t)kernel_base + 128*1024*1024)
+// #define PHYSTOP ((uint64_t)kernel_base + 128*1024*1024)
+#define PHYSTOP 0x88000000UL  // 使用固定值
 
 extern uint64_t kernel_base ;
 

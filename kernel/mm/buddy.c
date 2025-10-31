@@ -1,4 +1,4 @@
-// kernel/mm/buddy.c - 修复碎片合并版本
+// kernel/mm/buddy.c - 修复版本
 #include "mm.h"
 #include "printf.h"
 #include "buddy.h"
@@ -6,7 +6,7 @@
 // 伙伴系统全局实例
 static struct buddy_pool buddy_system;
 
-//将阶数转换为对应的页数：order 0 = 1页，order 1 = 2页，order 8 = 256页
+// 将阶数转换为对应的页数
 static inline int order_to_pages(int order) {
     return 1 << order;
 }
@@ -33,32 +33,22 @@ int is_buddy_free(uint64_t index, int order) {
     
     // 检查伙伴索引是否有效
     if (buddy_index >= buddy_system.total_pages) {
-        printf("Buddy: buddy index %d invalid (total_pages=%d)\n", 
-               (int)buddy_index, (int)buddy_system.total_pages);
         return 0;
     }
     
     // 检查伙伴块是否在对应阶的空闲链表中
     struct list_head *pos;
-    uint64_t buddy_addr = page_index_to_addr(buddy_index);
-    
-    printf("Buddy: checking if buddy %p (index=%d) is free in order %d\n",
-           (void*)buddy_addr, (int)buddy_index, order);
+    // uint64_t buddy_addr = page_index_to_addr(buddy_index);
     
     list_for_each(pos, &buddy_system.free_lists[order]) {
         uint64_t pos_addr = (uint64_t)pos;
         uint64_t pos_index = addr_to_page_index(pos_addr);
         
-        printf("Buddy:   comparing with free block %p (index=%d)\n",
-               (void*)pos_addr, (int)pos_index);
-        
         if (pos_index == buddy_index) {
-            printf("Buddy:   FOUND buddy in free list!\n");
             return 1;
         }
     }
     
-    printf("Buddy:   buddy NOT found in free list\n");
     return 0;
 }
 
@@ -73,11 +63,10 @@ void buddy_init(void) {
     
     // 设置内存池范围
     extern char end[];
-    extern uint64_t kernel_base;
     buddy_system.pool_start = PGROUNDUP((uint64_t)&end);
     
-    // 使用明确的 PHYSTOP 定义
-    #define BUDDY_PHYSTOP ((uint64_t)kernel_base + 128*1024*1024)
+    // 使用固定的 PHYSTOP 定义
+    #define BUDDY_PHYSTOP 0x88000000UL
     buddy_system.pool_size = BUDDY_PHYSTOP - buddy_system.pool_start;
     buddy_system.total_pages = buddy_system.pool_size / PAGE_SIZE;
     buddy_system.used_pages = 0;
@@ -134,8 +123,6 @@ void* buddy_alloc(int order) {
         return NULL;
     }
     
-    printf("Buddy: trying to allocate order %d (%d pages)\n", order, order_to_pages(order));
-    
     int current_order = order;
     
     // 寻找合适阶数的空闲块
@@ -151,17 +138,12 @@ void* buddy_alloc(int order) {
         return NULL;
     }
     
-    printf("Buddy: found free block at order %d\n", current_order);
-    
     // 从找到的链表中取出第一个块
     struct list_head *block = buddy_system.free_lists[current_order].next;
     list_del(block);
     
     uint64_t block_addr = (uint64_t)block;
     uint64_t block_index = addr_to_page_index(block_addr);
-    
-    printf("Buddy: got block at %p (index=%d) from order %d\n", 
-           (void*)block_addr, (int)block_index, current_order);
     
     // 如果找到的块比需要的大，进行分裂
     while (current_order > order) {
@@ -173,31 +155,21 @@ void* buddy_alloc(int order) {
         
         // 检查伙伴索引是否有效
         if (buddy_index >= buddy_system.total_pages) {
-            printf("Buddy: WARNING: invalid buddy index %d, stopping split\n", (int)buddy_index);
             break;
         }
-        
-        printf("Buddy: splitting order %d -> %d\n", current_order + 1, current_order);
-        printf("Buddy: block=%p (index=%d), buddy=%p (index=%d)\n", 
-               (void*)block_addr, (int)block_index, (void*)buddy_addr, (int)buddy_index);
         
         // 将伙伴块添加到对应阶的空闲链表
         struct list_head *buddy = (struct list_head*)buddy_addr;
         INIT_LIST_HEAD(buddy);
         list_add(buddy, &buddy_system.free_lists[current_order]);
-        
-        printf("Buddy: added buddy block to free list order %d\n", current_order);
     }
     
     buddy_system.used_pages += order_to_pages(order);
     
-    printf("Buddy: allocated order %d at %p (index=%d), pages=%d\n",
-           order, (void*)block_addr, (int)block_index, order_to_pages(order));
-    
     return (void*)block_addr;
 }
 
-// 修复的释放函数 - 改进合并逻辑
+// 修复的释放函数
 void buddy_free(void* addr, int order) {
     if (addr == NULL || order < BUDDY_MIN_ORDER || order > BUDDY_MAX_ORDER) {
         printf("Buddy: invalid free parameters: addr=%p, order=%d\n", addr, order);
@@ -207,12 +179,9 @@ void buddy_free(void* addr, int order) {
     uint64_t block_addr = (uint64_t)addr;
     uint64_t current_index = addr_to_page_index(block_addr);
     
-    printf("Buddy: freeing order %d at %p (index=%d)\n", order, addr, (int)current_index);
-    
     // 验证地址有效性
     if (current_index >= buddy_system.total_pages) {
-        printf("Buddy: ERROR: invalid address %p (index=%d, total_pages=%d)\n", 
-               addr, (int)current_index, (int)buddy_system.total_pages);
+        printf("Buddy: ERROR: invalid address %p\n", addr);
         return;
     }
     
@@ -226,24 +195,15 @@ void buddy_free(void* addr, int order) {
         
         // 检查伙伴索引是否有效
         if (buddy_index >= buddy_system.total_pages) {
-            printf("Buddy: buddy index %d exceeds total pages %d, stop merging\n",
-                   (int)buddy_index, (int)buddy_system.total_pages);
             break;
         }
         
-        printf("Buddy: checking merge at order %d, index=%d, buddy_index=%d\n",
-               current_order, (int)merge_index, (int)buddy_index);
-        
         // 检查伙伴块是否空闲且可合并
         if (!is_buddy_free(merge_index, current_order)) {
-            printf("Buddy: buddy not free, stop merging at order %d\n", current_order);
             break;
         }
         
         uint64_t buddy_addr = page_index_to_addr(buddy_index);
-        
-        printf("Buddy: merging at order %d: block=%p, buddy=%p\n",
-               current_order, (void*)merge_addr, (void*)buddy_addr);
         
         // 从空闲链表中移除伙伴块
         struct list_head *buddy = (struct list_head*)buddy_addr;
@@ -256,9 +216,6 @@ void buddy_free(void* addr, int order) {
         }
         
         current_order++;
-        
-        printf("Buddy: merged order %d -> %d at %p (index=%d)\n",
-               current_order - 1, current_order, (void*)merge_addr, (int)merge_index);
     }
     
     // 将合并后的块添加到对应阶的空闲链表
@@ -267,9 +224,6 @@ void buddy_free(void* addr, int order) {
     list_add(block, &buddy_system.free_lists[current_order]);
     
     buddy_system.used_pages -= order_to_pages(order);
-    
-    printf("Buddy: freed order %d, final order=%d at %p\n", 
-           order, current_order, (void*)merge_addr);
 }
 
 // 简化的伙伴系统状态转储
