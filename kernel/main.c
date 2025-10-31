@@ -1,101 +1,109 @@
-// 修改 main.c
-
+// kernel/main.c
+#include "types.h"
 #include "printf.h"
 #include "console.h"
+#include "trap.h"
 #include "clock.h"
-#include "clint.h"
-#include "trap.h"  // 添加trap头文件
+#include "uart.h"
+#include "mm.h"
 
-// 定义可调节的时钟间隔
-#define INTERVAL_SLOW   2000000  // 2秒
-#define INTERVAL_FAST   500000   // 0.5秒
-#define INTERVAL_NORMAL 1000000  // 1秒
-
-static uint64_t current_interval = INTERVAL_NORMAL;
-
-// 时钟间隔调节测试
-void clock_interval_test(void) {
-    printf("\n=== CLOCK INTERVAL TEST ===\n");
-    printf("Current interval: %d cycles\n", (int)current_interval);
-    printf("Ticks output speed test - observe 'T' character frequency\n\n");
-}
-
-// UART输入响应测试
-void uart_input_test(void) {
-    printf("\n=== UART INPUT TEST ===\n");
-    printf("Please type some characters on your keyboard...\n");
-    printf("If the system is working, you should see what you type.\n");
-    printf("Press Enter to start typing test:\n");
-}
-
-// 修改后的主函数
 int main(void) {
-    // 初始化控制台
     console_init();
+    printf("\n"
+           "===============================================\n"
+           "    RISC-V OS - Three Speed Timer Test\n"
+           "===============================================\n");
     
-    printf("\n");
-    printf("RV64 OS Booted Successfully!\n");
-    printf("Interrupt and Clock Management Test\n");
+    // 初始化系统
+    pmm_init();
+    kvminit();
+    kvminithart();
     
-    // 初始化中断系统
-    trap_init();
+    printf("System initialized successfully.\n\n");
     
-    // 初始化定时器
-    timer_init();
-    
-    // 测试1: 时钟滴答测试
-    printf("\n=== TEST 1: CLOCK TICK TEST ===\n");
-    printf("You should see 'T' characters appearing periodically\n");
-    
-    // 测试2: 时钟快慢测试
-    clock_interval_test();
-    
-    // 测试3: UART输入测试
-    uart_input_test();
-    
-    printf("\n=== ALL TESTS STARTED ===\n");
-    printf("Observe:\n");
-    printf("1. 'T' characters for clock ticks\n");
-    printf("2. ticks count every 10 interrupts\n");
-    printf("3. Keyboard input echo\n\n");
-    
-    // 启用全局中断
-    asm volatile("csrs sstatus, %0" : : "r"(1 << 1)); // 启用S-mode中断
-    
-    // 主循环 - 处理输入和显示状态
-    uint64_t last_display = 0;
-    int test_phase = 0;
+    // UART输入测试
+    printf("=== UART Input Test ===\n");
+    printf("Type a character to verify UART: ");
     
     while (1) {
-        uint64_t current_time = clint_get_time();
+        volatile unsigned char *uart_lsr = (volatile unsigned char *)(0x10000000 + 5);
+        if (*uart_lsr & 1) {
+            volatile unsigned char *uart_rhr = (volatile unsigned char *)0x10000000;
+            char c = *uart_rhr;
+            printf("'%c' - OK\n\n", c);
+            break;
+        }
+    }
+    
+    // 初始化中断系统
+    printf("=== Three Speed Timer Test ===\n");
+    trap_init();
+    clock_init();
+    
+    // 启用中断
+    asm volatile("csrs mie, %0" : : "r" (1 << 7));  // MTIE
+    asm volatile("csrs mstatus, %0" : : "r" (1 << 3)); // MIE
+    
+    printf("Three-speed timer interrupts enabled!\n\n");
+    
+    printf("=== TEST STARTED ===\n");
+    printf("You should see three different speed outputs:\n");
+    printf("  FAST   (.1s): Numbers 1-9 then +,-,*,/ symbols\n");
+    printf("  MEDIUM (.25s): Capital letters A-Z (every 5 ticks)\n");
+    printf("  SLOW   (.5s):  Lowercase letters a-z (every 3 ticks)\n");
+    printf("\nLive tick counters will show below:\n");
+    printf("Press 'q' to quit, 'r' to reset counters.\n\n");
+    
+    uint64_t last_fast = 0;
+    uint64_t last_medium = 0;
+    uint64_t last_slow = 0;
+    
+    while (1) {
+        // 获取当前ticks
+        uint64_t fast_ticks = get_ticks(TIMER_FAST);
+        uint64_t medium_ticks = get_ticks(TIMER_MEDIUM);
+        uint64_t slow_ticks = get_ticks(TIMER_SLOW);
         
-        // 每5秒切换一次时钟间隔进行测试
-        if (current_time - last_display > 5000000) {
-            last_display = current_time;
-            test_phase++;
-            
-            switch (test_phase % 3) {
-                case 0:
-                    current_interval = INTERVAL_NORMAL;
-                    printf("\n[Clock] Interval set to NORMAL\n");
-                    break;
-                case 1:
-                    current_interval = INTERVAL_SLOW;
-                    printf("\n[Clock] Interval set to SLOW\n");
-                    break;
-                case 2:
-                    current_interval = INTERVAL_FAST;
-                    printf("\n[Clock] Interval set to FAST\n");
-                    break;
-            }
-            
-            // 更新定时器间隔
-            uint64_t next_time = clint_get_time() + current_interval;
-            clint_set_timer(next_time);
+        // 显示实时计数（每秒更新一次）
+        if (fast_ticks != last_fast || medium_ticks != last_medium || slow_ticks != last_slow) {
+            printf("\rFAST: %llu ticks | MEDIUM: %llu ticks | SLOW: %llu ticks", 
+                   fast_ticks, medium_ticks, slow_ticks);
+            last_fast = fast_ticks;
+            last_medium = medium_ticks;
+            last_slow = slow_ticks;
         }
         
-        // 短延迟
-        for (volatile int i = 0; i < 1000; i++);
+        // 检查UART输入
+        volatile unsigned char *uart_lsr = (volatile unsigned char *)(0x10000000 + 5);
+        if (*uart_lsr & 1) {
+            volatile unsigned char *uart_rhr = (volatile unsigned char *)0x10000000;
+            char c = *uart_rhr;
+            
+            if (c == 'q' || c == 'Q') {
+                printf("\n\n=== TEST COMPLETED ===\n");
+                printf("Final counts:\n");
+                printf("  FAST:   %llu ticks\n", fast_ticks);
+                printf("  MEDIUM: %llu ticks\n", medium_ticks);
+                printf("  SLOW:   %llu ticks\n", slow_ticks);
+                printf("\nAll three speed tests completed successfully!\\n");
+                break;
+            } else if (c == 'r' || c == 'R') {
+                reset_ticks(TIMER_FAST);
+                reset_ticks(TIMER_MEDIUM);
+                reset_ticks(TIMER_SLOW);
+                printf("\nCounters reset!\n");
+            } else {
+                printf("\nInput: '%c' (UART working, press 'q' to quit)\\n", c);
+            }
+        }
+        
+        // 防止优化
+        asm volatile("" ::: "memory");
+    }
+    
+    printf("\nSystem halted.\n");
+    while(1) {
+        asm volatile("wfi");
     }
     
     return 0;

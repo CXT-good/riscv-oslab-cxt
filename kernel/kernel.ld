@@ -30,6 +30,7 @@ SECTIONS
   }
 
   PROVIDE(end = .);
+  PROVIDE(kernel_base = 0x80000000);  /* 添加这行 */
 
   .stack : {
     . = ALIGN(16);

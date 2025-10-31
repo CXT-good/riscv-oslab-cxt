@@ -1,3 +1,4 @@
+// kernel/printf.c
 #include "types.h"
 #include "printf.h"
 #include "console.h"
@@ -5,40 +6,27 @@
 
 static char digits[] = "0123456789abcdef";
 
-// 数字转换函数，base是进制，sign是是否处理符号
-static void print_number(long long num, int base, int sign) {
+// 支持64位数字的打印函数
+static void print_number(uint64_t num, int base, int sign) {
     char buf[64];
     int i = 0;
-    unsigned long long x;
+    uint64_t x = num;
 
-    if(sign && (sign = (num < 0)))
-        x = -num;
-    else
-        x = num;
+    if (sign && (int64_t)num < 0) {
+        x = -(int64_t)num;
+    }
 
-    i = 0;
     do {
         buf[i++] = digits[x % base];
     } while((x /= base) != 0);
 
-    if(sign)
+    if (sign && (int64_t)num < 0) {
         buf[i++] = '-';
-
-    while(--i >= 0)
-        console_putc(buf[i]);
-}
-
-// 指针输出函数
-static void print_pointer(uint64_t ptr) {
-    console_putc('0');
-    console_putc('x');
-    
-    if(ptr == 0) {
-        console_putc('0');
-        return;
     }
-    
-    print_number(ptr, 16, 0);
+
+    while(--i >= 0) {
+        console_putc(buf[i]);
+    }
 }
 
 // 主printf函数
@@ -76,8 +64,33 @@ int printf(const char *fmt, ...) {
                 print_number(va_arg(ap, unsigned int), 16, 0);
                 break;
                 
+            case 'l': // 长整型
+                i++;
+                if (fmt[i] == 'l') {
+                    i++;
+                    if (fmt[i] == 'u') {
+                        // %llu
+                        print_number(va_arg(ap, uint64_t), 10, 0);
+                    } else if (fmt[i] == 'x') {
+                        // %llx
+                        print_number(va_arg(ap, uint64_t), 16, 0);
+                    } else {
+                        console_putc('%');
+                        console_putc('l');
+                        console_putc('l');
+                        console_putc(fmt[i]);
+                    }
+                } else {
+                    console_putc('%');
+                    console_putc('l');
+                    console_putc(fmt[i]);
+                }
+                break;
+                
             case 'p': // 指针
-                print_pointer(va_arg(ap, uint64_t));
+                console_putc('0');
+                console_putc('x');
+                print_number(va_arg(ap, uint64_t), 16, 0);
                 break;
                 
             case 'c': // 字符
