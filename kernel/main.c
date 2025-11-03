@@ -199,16 +199,79 @@ void main(void) {
     // 先运行简化测试
     test_single_process();
     
+<<<<<<< HEAD
     // 如果简化测试成功，运行完整测试
     test_process_creation();
     test_scheduler();
     test_synchronization();
+=======
+    uint64_t last_fast = 0;
+    uint64_t last_medium = 0;
+    uint64_t last_slow = 0;
+    uint64_t last_display_time = 0;
+    uint64_t current_time = 0;
+>>>>>>> e5d9cd1d8a5889b55f5d7e9dbc013b1ff7238026
     
     printf("=== All Tests Completed ===\n");
     printf("All tests completed successfully!\n");
     
     // 主循环
     while (1) {
+<<<<<<< HEAD
+=======
+         // 获取当前时间
+        current_time = get_ticks(TIMER_FAST);
+        
+        // 每秒更新一次显示（FAST计时器每0.1秒触发一次，所以10个ticks=1秒）
+        if (current_time - last_display_time >= 10) {
+        // 获取当前ticks
+        uint64_t fast_ticks = get_ticks(TIMER_FAST);
+        uint64_t medium_ticks = get_ticks(TIMER_MEDIUM);
+        uint64_t slow_ticks = get_ticks(TIMER_SLOW);
+        
+        // 显示实时计数（每秒更新一次）
+        if (fast_ticks != last_fast || medium_ticks != last_medium || slow_ticks != last_slow) {
+            printf("FAST: %lu ticks | MEDIUM: %lu ticks | SLOW: %lu ticks\n", 
+                   fast_ticks, medium_ticks, slow_ticks);
+            last_fast = fast_ticks;
+            last_medium = medium_ticks;
+            last_slow = slow_ticks;
+        }
+    }
+        
+        // 检查UART输入
+        volatile unsigned char *uart_lsr = (volatile unsigned char *)(0x10000000 + 5);
+        if (*uart_lsr & 1) {
+            volatile unsigned char *uart_rhr = (volatile unsigned char *)0x10000000;
+            char c = *uart_rhr;
+            uint64_t fast_ticks = get_ticks(TIMER_FAST);
+        uint64_t medium_ticks = get_ticks(TIMER_MEDIUM);
+        uint64_t slow_ticks = get_ticks(TIMER_SLOW);
+            if (c == 'q' || c == 'Q') {
+                printf("\n\n=== TEST COMPLETED ===\n");
+                printf("Final counts:\n");
+                printf("  FAST:   %llu ticks\n", fast_ticks);
+                printf("  MEDIUM: %llu ticks\n", medium_ticks);
+                printf("  SLOW:   %llu ticks\n", slow_ticks);
+                printf("\nAll three speed tests completed successfully!\\n");
+                break;
+            } else if (c == 'r' || c == 'R') {
+                reset_ticks(TIMER_FAST);
+                reset_ticks(TIMER_MEDIUM);
+                reset_ticks(TIMER_SLOW);
+                printf("\nCounters reset!\n");
+            } else {
+                printf("\nInput: '%c' (UART working, press 'q' to quit)\\n", c);
+            }
+        }
+        
+        // 防止优化
+        asm volatile("" ::: "memory");
+    }
+    
+    printf("\nSystem halted.\n");
+    while(1) {
+>>>>>>> e5d9cd1d8a5889b55f5d7e9dbc013b1ff7238026
         asm volatile("wfi");
     }
 }
