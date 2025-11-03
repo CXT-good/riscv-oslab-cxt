@@ -10,7 +10,7 @@ CFLAGS += -Iinclude
 # 修正源文件列表 - 使用正确的扩展名
 SRCS = kernel/entry.S kernel/main.c kernel/uart.c kernel/console.c kernel/printf.c kernel/color_printf.c \
        kernel/mm/pmm.c kernel/mm/vmm.c kernel/mm/buddy.c \
-       kernel/trap.c kernel/clock.c kernel/trap_entry.S kernel/exception.c kernel/test_exception.c
+       kernel/trap.c kernel/clock.c kernel/trap_entry.S kernel/exception.c 
 
 OBJS = $(SRCS:.S=.o)
 OBJS := $(OBJS:.c=.o)
