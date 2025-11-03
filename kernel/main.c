@@ -26,9 +26,10 @@ int main(void) {
     printf("Initializing trap handler...\n");
     trap_init();
 
-    // 运行异常处理测试
-    test_exception_handling();
-    
+    // // 运行异常处理测试
+    // test_exception_handling();
+    run_comprehensive_tests();
+
 
     // UART输入测试
     printf("=== UART Input Test ===\n");
@@ -114,6 +115,7 @@ int main(void) {
     while(1) {
         asm volatile("wfi");
     }
+    
     
     return 0;
 }
