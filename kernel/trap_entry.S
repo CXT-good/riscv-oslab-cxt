@@ -1,4 +1,8 @@
 # kernel/trap_entry.S
+#这部分代码构成了完整的上下文切换机制，在陷阱发生时：
+# 保存当前执行状态到栈上
+# 调用 C 语言陷阱处理函数
+# 恢复之前的状态并返回
 .section .text
 .global trap_vector
 .align 4

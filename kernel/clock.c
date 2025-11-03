@@ -5,15 +5,16 @@
 #define CLINT_MTIME 0x200BFF8
 #define CLINT_MTIMECMP 0x2004000
 
-static uint64_t timer_ticks[NUM_TIMERS] = {0};
-static uint64_t next_event_time = 0;
-
+static uint64_t timer_ticks[NUM_TIMERS] = {0};  //存储三种不同类型定时器的滴答计数数组
+static uint64_t next_event_time = 0;            //下一个定时器事件时间
+  
 // 获取当前时间
 static inline uint64_t read_mtime(void) {
     return *(volatile uint64_t*)CLINT_MTIME;
 }
 
 // 写入 mtimecmp
+// 当 mtime >= mtimecmp 时触发中断
 static inline void write_mtimecmp(uint64_t value) {
     *(volatile uint64_t*)CLINT_MTIMECMP = value;
 }
@@ -21,7 +22,7 @@ static inline void write_mtimecmp(uint64_t value) {
 // 计算下一个事件时间（三个定时器的最小间隔）
 static uint64_t calculate_next_event(void) {
     uint64_t current_time = read_mtime();
-    uint64_t min_next = (uint64_t)-1;
+    uint64_t min_next = (uint64_t)-1;   // 初始化为最大值
     
     // 计算三个定时器下一次触发的时间
     for (int i = 0; i < NUM_TIMERS; i++) {

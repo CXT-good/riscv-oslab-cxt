@@ -1,4 +1,4 @@
-// kernel/trap.c - 修复版本
+// kernel/trap.c
 #include "trap.h"
 #include "printf.h"
 #include "clock.h"
@@ -68,7 +68,7 @@ void trap_handler(struct trap_context *ctx) {
     }
 }
 
-// 简化陷阱初始化
+// 陷阱初始化
 void trap_init(void) {
     extern void trap_vector(void);
     uint64_t mtvec_value = (uint64_t)trap_vector;
