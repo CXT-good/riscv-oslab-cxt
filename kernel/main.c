@@ -67,8 +67,15 @@ int main(void) {
     uint64_t last_fast = 0;
     uint64_t last_medium = 0;
     uint64_t last_slow = 0;
+    uint64_t last_display_time = 0;
+    uint64_t current_time = 0;
     
     while (1) {
+         // 获取当前时间
+        current_time = get_ticks(TIMER_FAST);
+        
+        // 每秒更新一次显示（FAST计时器每0.1秒触发一次，所以10个ticks=1秒）
+        if (current_time - last_display_time >= 10) {
         // 获取当前ticks
         uint64_t fast_ticks = get_ticks(TIMER_FAST);
         uint64_t medium_ticks = get_ticks(TIMER_MEDIUM);
@@ -82,13 +89,16 @@ int main(void) {
             last_medium = medium_ticks;
             last_slow = slow_ticks;
         }
+    }
         
         // 检查UART输入
         volatile unsigned char *uart_lsr = (volatile unsigned char *)(0x10000000 + 5);
         if (*uart_lsr & 1) {
             volatile unsigned char *uart_rhr = (volatile unsigned char *)0x10000000;
             char c = *uart_rhr;
-            
+            uint64_t fast_ticks = get_ticks(TIMER_FAST);
+        uint64_t medium_ticks = get_ticks(TIMER_MEDIUM);
+        uint64_t slow_ticks = get_ticks(TIMER_SLOW);
             if (c == 'q' || c == 'Q') {
                 printf("\n\n=== TEST COMPLETED ===\n");
                 printf("Final counts:\n");
