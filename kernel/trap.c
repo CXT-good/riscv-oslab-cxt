@@ -4,6 +4,7 @@
 #include "clock.h"
 #include "uart.h"
 #include "exception.h"
+#include "proc.h"
 
 // 完整的异常原因定义
 static const char* trap_cause_names[] = {
@@ -34,27 +35,30 @@ void trap_handler(struct trap_context *ctx) {
     // 读取 mtval
     asm volatile("csrr %0, mtval" : "=r" (ctx->mtval));
     
-    // 修复：使用正确的格式说明符
-    printf("TRAP: cause=0x%lx, mepc=%p, mtval=%p\n", 
-           cause, (void*)ctx->mepc, (void*)ctx->mtval);
-    
     // 判断是中断还是异常
     if (cause & 0x8000000000000000) {
         // 中断处理
         int int_code = cause & 0x7FFFFFFFFFFFFFFF;
-        printf("INTERRUPT: code=%d\n", int_code);
         
         switch (int_code) {
             case 7: // 定时器中断
-                printf("\nTIMER interrupt - handling\n");
                 clock_set_next_event();
+
+                // 触发调度
+                if (curr_proc!=0) {
+                    yield();
+                }
                 break;
             default:
+                // 仅对未知中断保留一次性提示
                 printf("Unknown interrupt: %d\n", int_code);
                 break;
         }
     } else {
         // 异常处理
+        // 修复：使用正确的格式说明符（仅异常时打印详细信息）
+        printf("TRAP: cause=0x%lx, mepc=0x%lx, mtval=0x%lx\n",
+            cause, (unsigned long)ctx->mepc, (unsigned long)ctx->mtval);
         int exc_code = cause & 0xF;
         
         // 显示异常信息

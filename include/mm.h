@@ -31,6 +31,7 @@
 #define BUDDY_MAX_ORDER   8      // 最大阶数：2^10 = 1024页 = 4MB
 #define BUDDY_MIN_ORDER   0      // 最小阶数：2^0 = 1页 = 4KB
 
+
 /* 链表结构定义 - 必须放在最前面 */
 struct list_head {
     struct list_head *next, *prev;
@@ -83,6 +84,7 @@ struct slab_cache {
     struct list_head full;       // 完全分配slab链表
 };
 
+
 /* Physical Memory Manager */
 //物理内存管理器函数声明
 void pmm_init(void);             // 物理内存管理器初始化
@@ -108,6 +110,8 @@ void dump_pagetable(pagetable_t pt);   // 打印页表内容
 //内核虚拟内存函数
 void kvminit(void);    // 初始化内核虚拟内存空间
 void kvminithart(void);  // 为当前CPU hart初始化内核页表
+
+extern pagetable_t kernel_pagetable;  // 内核页表全局变量
 
 /* Advanced Allocators */
 void* alloc_pages(int count);

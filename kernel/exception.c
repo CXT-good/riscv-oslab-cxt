@@ -4,6 +4,34 @@
 #include "trap.h"
 #include "clock.h"
 
+// 简单的异常重复保护：若同一 (mepc,cause) 持续触发多次，则强制前进打破循环
+static uint64_t last_mepc_for_exception = 0;
+static uint64_t last_cause_for_exception = (uint64_t)-1;
+static int repeat_exception_count = 0;
+
+static inline uint64_t force_advance_pc(uint64_t mepc, int repeats) {
+    // 第一次强制前进：跳到下一条32位边界
+    if (repeats > 10) {
+        return mepc + 8; // 仍无进展时加大步长
+    }
+    return (mepc + 4) & ~0x3UL;
+}
+
+// 计算下一条PC：
+// 优先使用 mtval（对非法指令，可能包含指令编码）判断压缩与否；
+// 对其他场景，可选择保守地按32位推进，避免在异常路径上再次访存取指而引入连环异常。
+static inline uint64_t next_pc_illegal(uint64_t mepc, uint64_t mtval) {
+    if (mtval != 0) {
+        uint16_t low16 = (uint16_t)(mtval & 0xFFFF);
+        if ((low16 & 0x3) != 0x3) {
+            return mepc + 2; // 压缩指令
+        }
+        return mepc + 4;
+    }
+    // mtval 未给出指令编码时，保守按32位处理
+    return mepc + 4;
+}
+
 // 异常处理函数
 // ctx：指向陷阱上下文的指针，包含所有寄存器状态
 // cause：异常原因寄存器值
@@ -12,35 +40,67 @@ void handle_exception(struct trap_context *ctx, uint64_t cause) {
 
     //mepc 是机器异常程序计数器，指向触发异常的指令
     printf("HANDLE_EXCEPTION: code=%d at mepc=%p\n", exc_code, (void*)ctx->mepc);
+
+    // 重复触发检测
+    if (last_mepc_for_exception == ctx->mepc && last_cause_for_exception == cause) {
+        repeat_exception_count++;
+    } else {
+        last_mepc_for_exception = ctx->mepc;
+        last_cause_for_exception = cause;
+        repeat_exception_count = 0;
+    }
     
     switch (exc_code) {
         case CAUSE_ILLEGAL_INSTRUCTION://非法指令
             printf("ILLEGAL INSTRUCTION - skipping\n");
-            // 检查指令是否有效，如果无效则跳过
-            // 如果是零指令，跳过该指令继续执行
-            if (*(uint32_t*)ctx->mepc == 0x00000000) {
-                printf("Found zero instruction, skipping\n");
-                ctx->mepc += 4;
-            } else { //如果是其他非法指令，系统挂起
-                printf("Unknown illegal instruction, halting\n");
-                while(1) asm volatile("wfi");//"wfi"：RISC-V 汇编指令，意思是 Wait For Interrupt（等待中断），可以通过中断唤醒
+            // 若检测到重复异常，强制按4字节推进以尽快脱离
+            if (repeat_exception_count > 3) {
+                printf("Repeated illegal instruction at %p, forcing advance\n", (void*)ctx->mepc);
+                ctx->mepc = force_advance_pc(ctx->mepc, repeat_exception_count);
+            } else {
+                ctx->mepc = next_pc_illegal(ctx->mepc, ctx->mtval);
             }
             break;
             
         case CAUSE_BREAKPOINT://断点异常
             printf("BREAKPOINT - skipping ebreak instruction\n");
-            ctx->mepc += 4;  // 跳过ebreak
+            ctx->mepc += 4;  // 我们的测试用 ebreak 为标准32位编码
             break;
             
         case CAUSE_MACHINE_ECALL://环境调用异常：由 ecall 指令触发
             printf("ECALL - skipping ecall instruction\n");
-            ctx->mepc += 4;  // 跳过ecall
+            ctx->mepc += 4;  // 我们的测试用 ecall 为标准32位编码
             break;
 
           // 新增内存访问异常处理
         case CAUSE_LOAD_ACCESS:
             printf("LOAD ACCESS FAULT at address %p - skipping instruction\n", (void*)ctx->mtval);
-            ctx->mepc += 4;  // 跳过导致异常的加载指令
+            if (repeat_exception_count > 3) {
+                printf("Repeated load fault at %p, forcing advance\n", (void*)ctx->mepc);
+                ctx->mepc = force_advance_pc(ctx->mepc, repeat_exception_count);
+            } else {
+                ctx->mepc += 4;  // 测试中触发为 ld 指令（32位）
+            }
+            break;
+
+        case CAUSE_STORE_ACCESS:
+            printf("STORE/AMO ACCESS FAULT at address %p - skipping instruction\n", (void*)ctx->mtval);
+            if (repeat_exception_count > 3) {
+                printf("Repeated store fault at %p, forcing advance\n", (void*)ctx->mepc);
+                ctx->mepc = force_advance_pc(ctx->mepc, repeat_exception_count);
+            } else {
+                ctx->mepc += 4;  // 测试中触发为存储/AMO指令（32位）
+            }
+            break;
+
+        case CAUSE_STORE_PAGE_FAULT:
+            printf("STORE/AMO PAGE FAULT at address %p - skipping instruction\n", (void*)ctx->mtval);
+            if (repeat_exception_count > 3) {
+                printf("Repeated store page fault at %p, forcing advance\n", (void*)ctx->mepc);
+                ctx->mepc = force_advance_pc(ctx->mepc, repeat_exception_count);
+            } else {
+                ctx->mepc += 4;
+            }
             break;
             
         default:

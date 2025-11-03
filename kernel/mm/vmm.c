@@ -115,7 +115,7 @@ void dump_pagetable(pagetable_t pt) {
 }
 
 /* Kernel page table - 只保留一个定义 */
-static pagetable_t kernel_pagetable = NULL;
+pagetable_t kernel_pagetable = NULL;
 
 extern char etext[];  /* Defined in kernel.ld */
 
@@ -242,8 +242,8 @@ void kvminit(void) {
     
     // 显示详细的映射信息
     printf("\nVMM: Detailed mapping information:\n");
-    printf("     Code: 0x80000000 - 0x%p (%d bytes)\n", (void*)code_end, (int)code_size);
-    printf("     Data: 0x%p - 0x%p (%d bytes)\n", (void*)data_start, (void*)PHYSTOP, (int)data_size);
+    printf("     Code: %p - %p (%d bytes)\n", (void*)kernel_base, (void*)code_end, (int)code_size);
+    printf("     Data: %p - %p (%d bytes)\n", (void*)data_start, (void*)PHYSTOP, (int)data_size);
 }
 
 //启用虚拟内存 - 修改为使用更清晰的SATP构造方式
@@ -267,3 +267,4 @@ void kvminithart(void) {
     printf("VMM: virtual memory enabled (satp=%p)\n", (void*)satp);
     printf("     Kernel page table active with separate code/data mappings\n\n");
 }
+pagetable_t kernel_pagetable;
