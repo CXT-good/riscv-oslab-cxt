@@ -1,12 +1,19 @@
-# kernel/switch.S - 上下文切换
-
+# kernel/switch.S - 添加上下文切换调试
 .section .text
 .global context_switch
 .align 4
 
-# void context_switch(struct context *old, struct context *new)
-# a0 = old context, a1 = new context
 context_switch:
+    # 保存调试信息
+    addi sp, sp, -16
+    sd ra, 0(sp)
+    
+    # 调用C函数打印调试信息（如果可用）
+    # call debug_context_switch
+    
+    ld ra, 0(sp)
+    addi sp, sp, 16
+
     # 保存当前上下文到old
     sd ra, 0(a0)
     sd sp, 8(a0)

@@ -3,6 +3,8 @@
 #include "mm.h"
 #include "trap.h"
 #include "clock.h"
+#include "priority.h"
+
 // 简易关机：QEMU virt/sifive 测试器（finisher），若存在则可用于退出仿真
 #define QEMU_FINISHER_ADDR 0x100000UL
 #define QEMU_FINISHER_PASS 0x5555
@@ -47,6 +49,10 @@ void proc_init(void) {
         proc[i].xstate = 0;
         proc[i].name[0] = '\0';
     }
+
+    // 初始化调度器上下文
+    scheduler_context.ra = 0;
+    scheduler_context.sp = 0;
     
     printf("Process: process table initialized\n");
 }

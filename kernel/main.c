@@ -200,9 +200,12 @@ void main(void) {
     // test_single_process();
     
     // 如果简化测试成功，运行完整测试
-    // test_process_creation();
-    // test_scheduler();
+    test_process_creation();
+    test_scheduler();
     test_synchronization();
+
+    // 运行优先级调度测试
+    // run_priority_scheduling_tests();
     
     printf("=== All Tests Completed ===\n");
     printf("All tests completed successfully!\n");
