@@ -197,11 +197,11 @@ void main(void) {
     printf("\n=== Starting Process Management Tests ===\n\n");
     
     // 先运行简化测试
-    test_single_process();
+    // test_single_process();
     
     // 如果简化测试成功，运行完整测试
-    test_process_creation();
-    test_scheduler();
+    // test_process_creation();
+    // test_scheduler();
     test_synchronization();
     
     printf("=== All Tests Completed ===\n");

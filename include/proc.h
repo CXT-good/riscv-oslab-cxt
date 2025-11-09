@@ -4,7 +4,7 @@
 #include "types.h"
 #include "mm.h"
 
-#define NPROC 64           // 最大进程数
+#define NPROC 32           // 最大进程数
 #define STACK_SIZE 4096    // 每个进程的栈大小
 
 // 进程状态
