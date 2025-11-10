@@ -3,6 +3,7 @@
 #include "trap.h"
 #include "proc.h"
 #include "uart.h"
+#include "priority.h"
 
 // 获取时间函数
 uint64_t get_time(void) {
@@ -200,12 +201,12 @@ void main(void) {
     // test_single_process();
     
     // 如果简化测试成功，运行完整测试
-    test_process_creation();
-    test_scheduler();
-    test_synchronization();
+    // test_process_creation();
+    // test_scheduler();
+    // test_synchronization();
 
     // 运行优先级调度测试
-    // run_priority_scheduling_tests();
+    run_priority_scheduling_tests();
     
     printf("=== All Tests Completed ===\n");
     printf("All tests completed successfully!\n");

@@ -25,14 +25,14 @@ static struct context scheduler_context; // 调度器自身的上下文
 
 // 简单的自旋锁
 inline void spin_lock(volatile int *lock) {
-    while (__sync_lock_test_and_set(lock, 1)) {}
+    while (__sync_lock_test_and_set(lock, 1)) {}// 原子测试并设置
 }
 
 inline void spin_unlock(volatile int *lock) {
-    __sync_lock_release(lock);
+    __sync_lock_release(lock);// 原子释放锁
 }
 
-volatile int proc_lock = 0;
+volatile int proc_lock = 0;// 进程表锁
 
 // 进程初始化
 void proc_init(void) {
@@ -44,10 +44,10 @@ void proc_init(void) {
         proc[i].kstack = 0;
         proc[i].pagetable = 0;
         proc[i].parent = 0;
-        proc[i].chan = 0;
+        proc[i].chan = 0;// 睡眠通道
         proc[i].killed = 0;
-        proc[i].xstate = 0;
-        proc[i].name[0] = '\0';
+        proc[i].xstate = 0;// 退出状态
+        proc[i].name[0] = '\0';//进程名
     }
 
     // 初始化调度器上下文
@@ -59,9 +59,10 @@ void proc_init(void) {
 
 // 分配进程结构
 struct proc* alloc_proc(void) {
-    spin_lock(&proc_lock);
+    spin_lock(&proc_lock);// 加锁保护进程表
     
     struct proc *p = 0;
+    // 查找空闲进程槽
     for (int i = 0; i < NPROC; i++) {
         if (proc[i].state == UNUSED) {
             p = &proc[i];
@@ -139,8 +140,8 @@ int create_process(void (*entry)(void)) {
     
     // 设置上下文，使进程从指定入口开始执行
     // 重要：设置返回地址为进程入口
-    p->context.ra = (uint64_t)entry;
-    p->context.sp = stack_top;
+    p->context.ra = (uint64_t)entry;//返回地址为进程入口
+    p->context.sp = stack_top;//栈指针为栈顶
     
     // 初始化其他寄存器为0
     p->context.s0 = 0;
@@ -196,6 +197,7 @@ void exit_process(int status) {
 int wait_process(int *status) {
     if (!curr_proc) {
         // 如果没有当前进程（在main中调用），使用进程0作为父进程
+        // 没有当前进程时，查找孤儿进程
         struct proc *p;
         int found = 0;
         
@@ -231,6 +233,7 @@ int wait_process(int *status) {
         struct proc *p;
         
         spin_lock(&proc_lock);
+        // 查找僵尸状态的子进程
         for (int i = 0; i < NPROC; i++) {
             p = &proc[i];
             if (p->state == ZOMBIE && p->parent == curr_proc) {
@@ -266,12 +269,13 @@ void sleep(void *chan) {
     
     curr_proc->chan = chan;
     curr_proc->state = SLEEPING;
-    yield();
+    yield();//让出CPU
 }
 
 void wakeup(void *chan) {
     spin_lock(&proc_lock);
     
+    // 唤醒所有在指定通道上睡眠的进程
     for (int i = 0; i < NPROC; i++) {
         if (proc[i].state == SLEEPING && proc[i].chan == chan) {
             proc[i].state = RUNNABLE;
@@ -290,7 +294,7 @@ void yield(void) {
     scheduler();
 }
 
-// 调度器 - 添加详细调试信息（减少刷屏）
+// 调度器
 void scheduler(void) {
     static int scheduler_started_logged = 0;
     static int idle_logged = 0;
@@ -331,6 +335,8 @@ void scheduler(void) {
             spin_unlock(&proc_lock);
             
             // 上下文切换
+            //如果有前一个进程 (prev_proc != NULL)：保存该进程的上下文
+            //如果没有前一个进程 (prev_proc == NULL)：保存调度器自身的上下文
             unsigned long old_ctx = prev_proc ? (unsigned long)&prev_proc->context : (unsigned long)&scheduler_context;
             unsigned long new_ctx = (unsigned long)&p->context;
             printf("  Calling context_switch (old=0x%lx, new=0x%lx)\n",
@@ -343,7 +349,7 @@ void scheduler(void) {
                 context_switch(&scheduler_context, &p->context);
             }
             
-            // 切换回来后 — 不额外改变进程状态或打印返回信息，
+            // 切换回来后 
             // 由进程自身根据需要设置状态（例如 exit 会设置为 ZOMBIE）
             curr_proc = 0;
         } else {
