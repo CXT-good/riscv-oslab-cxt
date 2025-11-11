@@ -11,7 +11,8 @@ CFLAGS += -Iinclude
 SRCS = kernel/entry.S kernel/main.c kernel/uart.c kernel/console.c kernel/printf.c kernel/color_printf.c \
        kernel/mm/pmm.c kernel/mm/vmm.c kernel/mm/buddy.c \
        kernel/trap.c kernel/clock.c kernel/trap_entry.S kernel/exception.c \
-	   kernel/proc.c kernel/switch.S kernel/priority.c kernel/priority_test.c
+       	kernel/proc.c kernel/switch.S kernel/priority.c kernel/priority_test.c \
+        	kernel/sysproc.c kernel/syscall.c kernel/syscall_test.c kernel/syscall_wrappers.c
 
 OBJS = $(SRCS:.S=.o)
 OBJS := $(OBJS:.c=.o)

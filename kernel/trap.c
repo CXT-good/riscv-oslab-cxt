@@ -5,6 +5,7 @@
 #include "uart.h"
 #include "exception.h"
 #include "proc.h"
+#include "syscall.h"
 
 // 完整的异常原因定义
 static const char* trap_cause_names[] = {
@@ -61,6 +62,11 @@ void trap_handler(struct trap_context *ctx) {
             cause, (unsigned long)ctx->mepc, (unsigned long)ctx->mtval);
         int exc_code = cause & 0xF;
         
+            if (exc_code == 8 || exc_code == 9) {
+                // 环境调用（系统调用）
+                syscall_dispatch(ctx);
+        } else
+        {
         // 显示异常信息
         printf("EXCEPTION: %d - %s\n", exc_code, 
                exc_code < 16 ? trap_cause_names[exc_code] : "unknown");
@@ -69,6 +75,7 @@ void trap_handler(struct trap_context *ctx) {
         handle_exception(ctx, cause);
         
         printf("Exception handled, new mepc=%p\n", (void*)ctx->mepc);
+        }
     }
 }
 

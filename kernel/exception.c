@@ -2,6 +2,7 @@
 #include "exception.h"
 #include "printf.h"
 #include "trap.h"
+#include "mm.h"
 #include "clock.h"
 
 // 简单的异常重复保护：若同一 (mepc,cause) 持续触发多次，则强制前进打破循环
@@ -32,6 +33,12 @@ static inline uint64_t next_pc_illegal(uint64_t mepc, uint64_t mtval) {
     return mepc + 4;
 }
 
+// 连续非法指令序列检测（用于跳过大段不可执行区域）
+static uint64_t last_illegal_mepc = 0;
+static int illegal_seq_count = 0;
+static const int ILLEGAL_SEQ_THRESHOLD = 64; // 若连续64条非法指令，认为进入数据/未映射区
+
+// 异常打印节流：对于高频重复异常，可按需控制打印频率（当前未启用）。
 // 异常处理函数
 // ctx：指向陷阱上下文的指针，包含所有寄存器状态
 // cause：异常原因寄存器值
@@ -53,8 +60,25 @@ void handle_exception(struct trap_context *ctx, uint64_t cause) {
     switch (exc_code) {
         case CAUSE_ILLEGAL_INSTRUCTION://非法指令
             printf("ILLEGAL INSTRUCTION - skipping\n");
-            // 若检测到重复异常，强制按4字节推进以尽快脱离
-            if (repeat_exception_count > 3) {
+
+            // 检测是否为连续的非法指令流（mepc 按 4 增加）
+            if (last_illegal_mepc && ctx->mepc == last_illegal_mepc + 4) {
+                illegal_seq_count++;
+            } else {
+                illegal_seq_count = 1;
+            }
+            last_illegal_mepc = ctx->mepc;
+
+            if (illegal_seq_count > ILLEGAL_SEQ_THRESHOLD) {
+                // 大量连续非法指令，可能是跳入数据段或大段未映射内存
+                uint64_t next_page = PGROUNDUP(ctx->mepc + 1);
+                printf("Large run of illegal instructions (%d) starting at %p - skipping to next page %p\n",
+                       illegal_seq_count, (void*)(ctx->mepc - (illegal_seq_count-1)*4), (void*)next_page);
+                ctx->mepc = next_page;
+                // 重置检测器
+                illegal_seq_count = 0;
+                last_illegal_mepc = 0;
+            } else if (repeat_exception_count > 3) {
                 printf("Repeated illegal instruction at %p, forcing advance\n", (void*)ctx->mepc);
                 ctx->mepc = force_advance_pc(ctx->mepc, repeat_exception_count);
             } else {
@@ -81,6 +105,21 @@ void handle_exception(struct trap_context *ctx, uint64_t cause) {
             } else {
                 ctx->mepc += 4;  // 测试中触发为 ld 指令（32位）
             }
+            break;
+
+        case CAUSE_FETCH_ACCESS:
+            printf("INSTRUCTION ACCESS FAULT at address %p - skipping instruction\n", (void*)ctx->mtval);
+            if (repeat_exception_count > 3) {
+                printf("Repeated fetch fault at %p, forcing advance\n", (void*)ctx->mepc);
+                ctx->mepc = force_advance_pc(ctx->mepc, repeat_exception_count);
+            } else {
+                ctx->mepc += 4; // 跳过导致取指错误的指令（假设32位）
+            }
+            break;
+
+        case CAUSE_MISALIGNED_FETCH:
+            printf("MISALIGNED FETCH at mepc=%p - forcing advance\n", (void*)ctx->mepc);
+            ctx->mepc = force_advance_pc(ctx->mepc, repeat_exception_count);
             break;
 
         case CAUSE_STORE_ACCESS:

@@ -34,6 +34,18 @@ inline void spin_unlock(volatile int *lock) {
 
 volatile int proc_lock = 0;// 进程表锁
 
+// 调度器循环函数
+void scheduler_loop(void) {
+    printf("Scheduler: entered scheduler loop\n");
+    
+    while (1) {
+        scheduler();
+        // 如果没有可运行进程，等待中断
+        asm volatile("wfi");
+    }
+}
+
+
 // 进程初始化
 void proc_init(void) {
     printf("Process: initializing process table with %d slots\n", NPROC);
@@ -50,12 +62,13 @@ void proc_init(void) {
         proc[i].name[0] = '\0';//进程名
     }
 
-    // 初始化调度器上下文
-    scheduler_context.ra = 0;
-    scheduler_context.sp = 0;
+    // 正确初始化调度器上下文
+    scheduler_context.ra = (uint64_t)scheduler_loop;
+    scheduler_context.sp = (uint64_t)alloc_page() + PAGE_SIZE;  // 分配调度器栈
     
     printf("Process: process table initialized\n");
 }
+
 
 // 分配进程结构
 struct proc* alloc_proc(void) {
@@ -186,26 +199,36 @@ void exit_process(int status) {
     
     // 直接切回调度器上下文，彻底离开该进程上下文
     printf("Process %d: yielding to scheduler\n", curr_proc->pid);
-    struct proc *p = curr_proc;
+    // 直接调用调度器，而不是上下文切换
+    // struct proc *old_proc = curr_proc;
     curr_proc = 0;
-    context_switch(&p->context, &scheduler_context);
+    
+    // 直接调用调度器，让它选择下一个进程
+    scheduler();
+    
+    // 不应该到达这里
+    printf("ERROR: returned from scheduler after exit!\n");
     for (;;) { asm volatile("wfi"); }
 }
 
 
-// 等待子进程
+// 在 proc.c 中找到 wait_process 函数，修改如下：
+
 int wait_process(int *status) {
+    printf("DEBUG: wait_process called, curr_proc=%s\n", 
+           curr_proc ? curr_proc->name : "NULL");
+    
     if (!curr_proc) {
-        // 如果没有当前进程（在main中调用），使用进程0作为父进程
-        // 没有当前进程时，查找孤儿进程
+        // 修改后的逻辑：回收任何僵尸进程
         struct proc *p;
         int found = 0;
         
         spin_lock(&proc_lock);
         for (int i = 0; i < NPROC; i++) {
             p = &proc[i];
-            if (p->state == ZOMBIE && p->parent == NULL) {
+            if (p->state == ZOMBIE) {
                 found = 1;
+                printf("DEBUG: found zombie process %d to reap\n", p->pid);
                 break;
             }
         }
@@ -222,11 +245,14 @@ int wait_process(int *status) {
                 free_page((void*)p->kstack);
             }
             
-            printf("Process: reaped orphan process %d\n", p->pid);
+            printf("Process: reaped zombie process %d\n", p->pid);
             return p->pid;
         }
+        printf("DEBUG: no zombie processes found\n");
         return -1;
     }
+    
+    printf("DEBUG: current process %d waiting for children\n", curr_proc->pid);
     
     while (1) {
         int found = 0;
@@ -238,6 +264,7 @@ int wait_process(int *status) {
             p = &proc[i];
             if (p->state == ZOMBIE && p->parent == curr_proc) {
                 found = 1;
+                printf("DEBUG: found child zombie process %d\n", p->pid);
                 break;
             }
         }
@@ -254,12 +281,14 @@ int wait_process(int *status) {
                 free_page((void*)p->kstack);
             }
             
-            printf("Process: reaped process %d\n", p->pid);
+            printf("Process: reaped process %d with status %d\n", p->pid, p->xstate);
             return p->pid;
         }
         
+        printf("DEBUG: no children found, process %d going to sleep\n", curr_proc->pid);
         // 没有找到子进程，睡眠等待
         sleep(curr_proc);
+        printf("DEBUG: process %d woke up from sleep\n", curr_proc->pid);
     }
 }
 
@@ -294,69 +323,75 @@ void yield(void) {
     scheduler();
 }
 
-// 调度器
 void scheduler(void) {
     static int scheduler_started_logged = 0;
-    static int idle_logged = 0;
 
     if (!scheduler_started_logged) {
         printf("Scheduler: starting...\n");
         scheduler_started_logged = 1;
     }
     
-    for (;;) {
-        // 开启中断
-        asm volatile("csrs mstatus, %0" : : "r" (1 << 3));
-        
-        int found = 0;
-        struct proc *p;
-        
-        spin_lock(&proc_lock);
-        
-        // 简单的轮转调度
-        for (p = proc; p < &proc[NPROC]; p++) {
-            if (p->state == RUNNABLE) {
-                found = 1;
-                break;
-            }
+    // 开启中断
+    asm volatile("csrs mstatus, %0" : : "r" (1 << 3));
+    
+    int found = 0;
+    struct proc *p;
+    
+    spin_lock(&proc_lock);
+    
+    // 查找可运行进程
+    for (p = proc; p < &proc[NPROC]; p++) {
+        if (p->state == RUNNABLE) {
+            found = 1;
+            break;
         }
+    }
+    
+    if (found) {
+        printf("Scheduler: switching to process %d\n", p->pid);
+        printf("  Process %d context: ra=%p, sp=%p\n", 
+               p->pid, (void*)p->context.ra, (void*)p->context.sp);
         
-        if (found) {
-            // 从空闲状态恢复，清理一次性空闲日志标志
-            if (idle_logged) idle_logged = 0;
-            printf("Scheduler: switching to process %d\n", p->pid);
-            printf("  Process %d context: ra=%p, sp=%p\n", 
-                   p->pid, (void*)p->context.ra, (void*)p->context.sp);
-            
-            p->state = RUNNING;
-            struct proc *prev_proc = curr_proc;
-            curr_proc = p;
-            
-            spin_unlock(&proc_lock);
-            
-            // 上下文切换
-            //如果有前一个进程 (prev_proc != NULL)：保存该进程的上下文
-            //如果没有前一个进程 (prev_proc == NULL)：保存调度器自身的上下文
-            unsigned long old_ctx = prev_proc ? (unsigned long)&prev_proc->context : (unsigned long)&scheduler_context;
-            unsigned long new_ctx = (unsigned long)&p->context;
-            printf("  Calling context_switch (old=0x%lx, new=0x%lx)\n",
-                old_ctx, new_ctx);
-            
-            if (prev_proc) {
-                context_switch(&prev_proc->context, &p->context);
-            } else {
-                // 第一次调度：从调度器上下文切到进程上下文
-                context_switch(&scheduler_context, &p->context);
-            }
-            
-            // 切换回来后 
-            // 由进程自身根据需要设置状态（例如 exit 会设置为 ZOMBIE）
-            curr_proc = 0;
+        p->state = RUNNING;
+        struct proc *prev_proc = curr_proc;
+        curr_proc = p;
+        
+        spin_unlock(&proc_lock);
+        
+        // 上下文切换
+        if (prev_proc) {
+            printf("  Switching from process %d to %d\n", prev_proc->pid, p->pid);
+            context_switch(&prev_proc->context, &p->context);
         } else {
-            // 没有可运行进程：立即返回给调用者（让上层继续 wait/reap 或进行下一阶段测试）
-            spin_unlock(&proc_lock);
-            return;
+            // 第一次调度或从退出进程切换
+            printf("  Switching from scheduler to process %d\n", p->pid);
+            context_switch(&scheduler_context, &p->context);
         }
+        
+        // 切换回来后
+        printf("Scheduler: returned from process %d\n", curr_proc->pid);
+        // curr_proc = 0;
+    } else {
+        // 没有可运行进程
+        spin_unlock(&proc_lock);
+        printf("Scheduler: no runnable processes found\n");
+        
+        // 检查是否有僵尸进程需要清理
+        int zombie_count = 0;
+        spin_lock(&proc_lock);
+        for (int i = 0; i < NPROC; i++) {
+            if (proc[i].state == ZOMBIE) {
+                zombie_count++;
+                printf("  Found zombie process %d\n", proc[i].pid);
+            }
+        }
+        spin_unlock(&proc_lock);
+        
+        if (zombie_count > 0) {
+            printf("Scheduler: %d zombie processes waiting to be reaped\n", zombie_count);
+        }
+        
+        return;
     }
 }
 
