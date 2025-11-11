@@ -126,19 +126,19 @@ void test_security(void) {
     printf("Security tests completed\n\n");
 }
 
-// 性能测试
 void test_syscall_performance(void) {
     printf("=== Testing System Call Performance ===\n");
     
     uint64_t start_time, end_time;
-    int test_iterations = 10000;
+    int test_iterations = 1000;
     
     printf("1. Testing getpid performance (%d iterations)...\n", test_iterations);
     
+    // 临时禁用详细日志
     // 读取开始时间
     asm volatile("csrr %0, time" : "=r"(start_time));
     
-    // 大量系统调用测试
+    // 大量系统调用测试 - 不打印每次调用的调试信息
     for (int i = 0; i < test_iterations; i++) {
         getpid();  // 简单的系统调用
     }

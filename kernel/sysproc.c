@@ -168,7 +168,7 @@ int sys_kill(void) {
 
 int sys_getpid(void) {
     int pid = myproc()->pid;
-    printf("SYSCALL: getpid returning %d\n", pid);
+    // printf("SYSCALL: getpid returning %d\n", pid);
     return pid;
 }
 
@@ -201,8 +201,8 @@ int sys_write(void) {
         return -1;
     }
     
-    printf("SYSCALL: write called: fd=%d, buf=0x%lx, n=%d\n", 
-           fd, buf_addr, n);
+    // printf("SYSCALL: write called: fd=%d, buf=0x%lx, n=%d\n", 
+        //    fd, buf_addr, n);
     
     // 只支持标准输出和标准错误
     if(fd != 1 && fd != 2) {

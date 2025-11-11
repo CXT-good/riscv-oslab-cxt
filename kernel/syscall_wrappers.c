@@ -11,7 +11,7 @@
 //     return sys_getpid();
 // }
 int getpid(void) {
-    printf("DEBUG: getpid wrapper called\n");
+    // printf("DEBUG: getpid wrapper called\n");
     
     // 如果 curr_proc 不存在，创建一个临时的
     if (curr_proc == NULL) {
@@ -52,7 +52,7 @@ static int is_valid_user_pointer(const void *ptr, int size) {
     
     // 允许其他地址用于测试
     // 在真实用户环境中需要更严格的检查
-    printf("DEBUG: Allowing pointer %p for write in test environment\n", ptr);
+    // printf("DEBUG: Allowing pointer %p for write in test environment\n", ptr);
     return 1;
 }
 
