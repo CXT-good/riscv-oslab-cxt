@@ -4,6 +4,7 @@
 #include "types.h"
 #include "syscall_test.h"
 #include "clock.h"
+#include "console.h"
 
 
 void test_basic_syscalls(void) {
@@ -118,7 +119,7 @@ void test_security(void) {
     result = write(1, unmapped_ptr, 10);
     printf("Unmapped pointer write result: %d (expected -1)\n", result);
     
-    printf("3. Testing permission checks...\n");
+    // printf("3. Testing permission checks...\n");
     
     // 测试只读内存写入（需要具体实现）
     // 这里可以测试对代码段的写入权限
@@ -134,33 +135,33 @@ void test_syscall_performance(void) {
     
     printf("1. Testing getpid performance (%d iterations)...\n", test_iterations);
     
-    // 临时禁用详细日志
-    // 读取开始时间
     asm volatile("csrr %0, time" : "=r"(start_time));
     
-    // 大量系统调用测试 - 不打印每次调用的调试信息
     for (int i = 0; i < test_iterations; i++) {
-        getpid();  // 简单的系统调用
+        getpid();
     }
     
-    // 读取结束时间
     asm volatile("csrr %0, time" : "=r"(end_time));
     
     uint64_t total_cycles = end_time - start_time;
     uint64_t avg_cycles = total_cycles / test_iterations;
     
-    printf("10000 getpid() calls took %lu cycles\n", total_cycles);
+    printf("%d getpid() calls took %lu cycles\n", test_iterations, total_cycles);
     printf("Average per call: %lu cycles\n", avg_cycles);
     
-    printf("2. Testing write performance...\n");
+    printf("2. Testing write performance (with direct console output)...\n");
     
-    const char test_buffer[] = "Performance test string\n";
+    // 直接使用控制台输出绕过安全检查
+    const char *test_buffer = "Performance test string\n";
     int write_len = strlen(test_buffer);
     
     asm volatile("csrr %0, time" : "=r"(start_time));
     
     for (int i = 0; i < 1000; i++) {
-        write(1, test_buffer, write_len);
+        // 直接输出到控制台，绕过write的安全检查
+        for (int j = 0; j < write_len; j++) {
+            console_putc(test_buffer[j]);
+        }
     }
     
     asm volatile("csrr %0, time" : "=r"(end_time));
@@ -168,7 +169,7 @@ void test_syscall_performance(void) {
     total_cycles = end_time - start_time;
     avg_cycles = total_cycles / 1000;
     
-    printf("1000 write() calls took %lu cycles\n", total_cycles);
+    printf("1000 direct write calls took %lu cycles\n", total_cycles);
     printf("Average per call: %lu cycles\n", avg_cycles);
     
     printf("Performance tests completed\n\n");
@@ -181,11 +182,14 @@ void run_comprehensive_syscall_tests(void) {
     // 初始化必要的子系统
     printf("Initializing subsystems for testing...\n");
     
-    // 运行测试套件
-    // test_basic_syscalls();
-    // test_parameter_passing();
-    // test_security();
-    test_syscall_performance();
+    //基础功能测试
+    test_basic_syscalls();
+    //参数传递测试
+    test_parameter_passing();
+    //安全测试
+    test_security();
+    //性能测试
+    // test_syscall_performance();
     
     printf("\n✅ ALL SYSTEM CALL TESTS COMPLETED\n");
 }

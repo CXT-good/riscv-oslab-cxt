@@ -10,6 +10,12 @@
 // int getpid(void) {
 //     return sys_getpid();
 // }
+
+// 定义内存区域边界
+#define USER_SPACE_START   0x00000000
+#define USER_SPACE_END     0x40000000  // 1GB用户空间
+#define KERNEL_SPACE_START 0x80000000  // 内核空间开始
+
 int getpid(void) {
     // printf("DEBUG: getpid wrapper called\n");
     
@@ -37,24 +43,40 @@ int getppid(void) {
     return sys_getppid();
 }
 
+// 增强的用户指针验证
 static int is_valid_user_pointer(const void *ptr, int size) {
     uint64_t addr = (uint64_t)ptr;
     
     // 检查 NULL 指针
     if (ptr == NULL) return 0;
     
-    // 在内核测试环境中，放宽检查
-    // 只拒绝明确的无效测试地址
+    // 检查内核空间指针
+    if (addr >= KERNEL_SPACE_START) {
+        printf("DEBUG: Rejecting kernel space pointer %p\n", ptr);
+        return 0;
+    }
+    
+    // 检查明确的无效测试地址
     if (addr == 0x1000000 || addr == 0x30000000) {
         printf("DEBUG: Rejecting test invalid pointer %p\n", ptr);
         return 0;
     }
     
-    // 允许其他地址用于测试
-    // 在真实用户环境中需要更严格的检查
-    // printf("DEBUG: Allowing pointer %p for write in test environment\n", ptr);
+    // 检查用户空间范围
+    if (addr < USER_SPACE_START || addr >= USER_SPACE_END) {
+        printf("DEBUG: Rejecting out-of-range pointer %p\n", ptr);
+        return 0;
+    }
+    
+    // 检查指针+长度是否越界
+    if (addr + size > USER_SPACE_END) {
+        printf("DEBUG: Rejecting pointer %p with size %d (would exceed user space)\n", ptr, size);
+        return 0;
+    }
+    
     return 1;
 }
+
 
 // 在 syscall_wrappers.c 中修改 wait 函数
 int wait(int *status) {
@@ -80,7 +102,7 @@ int write(int fd, const void *buf, int count) {
     if (buf == NULL) return -1;
     if (fd != 1 && fd != 2) return -1;
 
-    // 添加指针有效性检查
+    // 增强的指针有效性检查
     if (!is_valid_user_pointer(buf, count)) {
         printf("DEBUG: write called with invalid pointer %p\n", buf);
         return -1;
@@ -93,13 +115,29 @@ int write(int fd, const void *buf, int count) {
     return count;
 }
 
+// 增强的read函数，添加缓冲区边界检查
 int read(int fd, void *buf, int count) {
     if (fd != 0) return -1;
     if (buf == NULL || count <= 0) return -1;
+    
+    // 添加指针有效性检查
+    if (!is_valid_user_pointer(buf, count)) {
+        printf("DEBUG: read called with invalid pointer %p\n", buf);
+        return -1;
+    }
+    
+    // 在实际系统中，这里应该检查缓冲区实际大小
+    // 但对于明显的溢出尝试进行拒绝
+    if (count > 4096) { // 拒绝过大的读取请求
+        printf("DEBUG: Rejecting oversized read request: %d bytes\n", count);
+        return -1;
+    }
+    
     const char *test_data = "test input from stdin\n";
     int data_len = 0;
     while (test_data[data_len]) data_len++;
     int read_len = count < data_len ? count : data_len;
+    
     // simple copy to avoid dependence on libc memcpy signature
     char *dst = (char*)buf;
     for (int i = 0; i < read_len; i++) dst[i] = test_data[i];
@@ -112,3 +150,4 @@ int strlen(const char *s) {
     while (s[n]) n++;
     return n;
 }
+

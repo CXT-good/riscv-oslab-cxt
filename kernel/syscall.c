@@ -104,42 +104,62 @@ int fetchstr(uint64_t addr, char *buf, int max) {
     return -1;
 }
 
-// 从用户空间拷贝数据到内核空间
+// 在copyin/copyout函数中添加基本边界检查
 int copyin(pagetable_t pagetable, char *dst, uint64_t srcva, uint64_t len) {
     if (len == 0) {
         return 0;
     }
     
-    // 简化实现：直接内存拷贝
-    // 在实际系统中需要遍历页表并检查权限
-    char *src = (char*)srcva;
-    
-    // 安全检查：确保不跨越页边界等
+    // 增强的安全检查
     if (srcva < 0x1000) { // 避免访问NULL指针区域
         return -1;
     }
     
-    // simple byte copy to avoid depending on external memmove implementation
+    // 检查内核空间访问
+    if (srcva >= 0x80000000) {
+        printf("SECURITY: Attempt to copy from kernel space: 0x%lx\n", srcva);
+        return -1;
+    }
+    
+    // 在实际系统中应该检查页表权限，这里简化实现
+    char *src = (char*)srcva;
+    
+    // 添加长度限制
+    if (len > 4096) { // 限制单次拷贝大小
+        printf("SECURITY: Oversized copyin attempt: %lu bytes\n", len);
+        return -1;
+    }
+    
+    // simple byte copy
     for (uint64_t i = 0; i < len; i++) dst[i] = src[i];
     return 0;
 }
 
-// 从内核空间拷贝数据到用户空间
 int copyout(pagetable_t pagetable, uint64_t dstva, char *src, uint64_t len) {
     if (len == 0) {
         return 0;
     }
     
-    // 简化实现：直接内存拷贝
-    // 在实际系统中需要遍历页表并检查权限
-    char *dst = (char*)dstva;
-    
-    // 安全检查：确保不跨越页边界等
+    // 增强的安全检查
     if (dstva < 0x1000) { // 避免访问NULL指针区域
         return -1;
     }
     
-    // simple byte copy to avoid depending on external memmove implementation
+    // 检查内核空间访问
+    if (dstva >= 0x80000000) {
+        printf("SECURITY: Attempt to copy to kernel space: 0x%lx\n", dstva);
+        return -1;
+    }
+    
+    // 添加长度限制
+    if (len > 4096) { // 限制单次拷贝大小
+        printf("SECURITY: Oversized copyout attempt: %lu bytes\n", len);
+        return -1;
+    }
+    
+    char *dst = (char*)dstva;
+    
+    // simple byte copy
     for (uint64_t i = 0; i < len; i++) dst[i] = src[i];
     return 0;
 }

@@ -195,19 +195,28 @@ int sys_write(void) {
         return -1;
     }
     
-    // 安全检查
+    // 增强的安全检查
     if(buf_addr == 0) {
         set_syscall_error(SYSERR_INVALID_ARGS);
         return -1;
     }
     
-    // printf("SYSCALL: write called: fd=%d, buf=0x%lx, n=%d\n", 
-        //    fd, buf_addr, n);
+    // 检查内核空间指针
+    if (buf_addr >= 0x80000000) {
+        printf("SECURITY: write attempt with kernel pointer: 0x%lx\n", buf_addr);
+        set_syscall_error(SYSERR_ACCESS_DENIED);
+        return -1;
+    }
     
     // 只支持标准输出和标准错误
     if(fd != 1 && fd != 2) {
         set_syscall_error(SYSERR_NOT_SUPPORTED);
         return -1;
+    }
+    
+    // 限制写入大小
+    if (n > 4096) {
+        n = 4096; // 限制为4KB
     }
     
     struct proc *p = myproc();
@@ -253,13 +262,22 @@ int sys_read(void) {
         return 0;
     }
     
-    printf("SYSCALL: read called: fd=%d, buf=0x%lx, n=%d\n", 
-           fd, buf_addr, n);
-    
-    // 只支持标准输入
-    if(fd != 0) {
-        set_syscall_error(SYSERR_NOT_SUPPORTED);
+    // 增强的安全检查
+    if (buf_addr == 0) {
+        set_syscall_error(SYSERR_INVALID_ARGS);
         return -1;
+    }
+    
+    // 检查内核空间指针
+    if (buf_addr >= 0x80000000) {
+        printf("SECURITY: read attempt with kernel pointer: 0x%lx\n", buf_addr);
+        set_syscall_error(SYSERR_ACCESS_DENIED);
+        return -1;
+    }
+    
+    // 限制读取大小
+    if (n > 4096) {
+        n = 4096; // 限制为4KB
     }
     
     // 简化实现：返回模拟数据
