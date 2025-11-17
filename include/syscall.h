@@ -24,8 +24,17 @@
 #define SYS_sleep    16
 #define SYS_uptime   17
 #define SYS_getppid  18
+#define SYS_getprocinfo 19  // 新增：获取进程信息
 
 #define SYSCALL_MAX  64
+
+// 进程信息结构体
+struct procinfo {
+    int pid;           // 进程ID
+    int state;         // 进程状态
+    int parent_pid;    // 父进程ID
+    char name[16];     // 进程名称
+};
 
 // 错误码定义
 #define SYSERR_SUCCESS 0
@@ -59,6 +68,9 @@ extern struct syscall_desc syscall_table[SYSCALL_MAX];
 void syscall_init(void);
 void syscall_dispatch(struct trap_context *ctx);
 int check_syscall_permission(struct proc *p, int syscall_num);
+
+// 在系统调用函数声明部分添加：
+int sys_getprocinfo(void);
 
 // 参数提取函数
 int argint(int n, int *ip);

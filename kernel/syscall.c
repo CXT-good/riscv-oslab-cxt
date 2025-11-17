@@ -22,6 +22,7 @@ struct syscall_desc syscall_table[SYSCALL_MAX] = {
     [SYS_sbrk]    = {sys_sbrk,    "sbrk",    1, 0x1, 0},
     [SYS_exec]    = {0,           "exec",    2, 0x2 | (0x2 << 4), 0},
     [SYS_getppid] = {sys_getppid, "getppid", 0, 0, 0},
+    [SYS_getprocinfo] = {sys_getprocinfo, "getprocinfo", 1, 0x2, 0},  // 新增
 };
 
 // 使用 include/syscall.h 中定义的 syscall_result_t

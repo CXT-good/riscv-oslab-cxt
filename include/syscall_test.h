@@ -3,12 +3,14 @@
 #define _SYSCALL_TEST_H_
 
 #include "types.h"
+#include "syscall.h"
 
 // 测试函数声明
 void test_basic_syscalls(void);
 void test_parameter_passing(void);
 void test_security(void);
 void test_syscall_performance(void);
+void test_getprocinfo(void);  // 新增测试函数
 void run_comprehensive_syscall_tests(void);
 
 // 系统调用包装函数声明（用于测试）
@@ -19,6 +21,7 @@ int wait(int *status);
 int getppid(void);
 int write(int fd, const void *buf, int count);
 int read(int fd, void *buf, int count);
+int getprocinfo(struct procinfo *info);  // 新增
 
 // 标准库函数声明
 int strlen(const char *s);
