@@ -23,6 +23,11 @@ int read(int fd, void *buf, int count);
 // 标准库函数声明
 int strlen(const char *s);
 
+
+// 测试模式控制函数声明
+void enable_test_mode(void);
+void disable_test_mode(void);
+
 // 系统初始化函数声明
 void uart_init(void);
 void clock_init(void);

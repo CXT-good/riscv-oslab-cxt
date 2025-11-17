@@ -31,3 +31,4 @@ SYSCALL getcwd, 15
 SYSCALL sleep, 16
 SYSCALL uptime, 17
 SYSCALL getppid, 18
+SYSCALL getprocinfo, 19

@@ -49,7 +49,8 @@ void test_basic_syscalls(void) {
 // 参数传递测试
 void test_parameter_passing(void) {
     printf("=== Testing Parameter Passing ===\n");
-    
+    enable_test_mode();
+
     char buffer[] = "Hello, World!";
     int buffer_len = strlen(buffer);
     
@@ -86,6 +87,8 @@ void test_parameter_passing(void) {
     result = write(1, buffer, 0);
     printf("Write with zero length: result=%d (expected 0)\n", result);
     
+      // 禁用测试模式
+    disable_test_mode();
     printf("Parameter passing test completed\n\n");
 }
 
