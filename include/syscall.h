@@ -25,6 +25,7 @@
 #define SYS_uptime   17
 #define SYS_getppid  18
 #define SYS_getprocinfo 19  // 新增：获取进程信息
+#define SYS_unlink   20     // 删除文件
 
 #define SYSCALL_MAX  64
 
@@ -98,6 +99,9 @@ int sys_getpid(void);
 int sys_getppid(void);
 int sys_write(void);
 int sys_read(void);
+int sys_open(void);
+int sys_close(void);
+int sys_unlink(void);
 int sys_brk(void);
 int sys_sbrk(void);
 
