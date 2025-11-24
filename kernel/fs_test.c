@@ -290,14 +290,48 @@ void test_crash_recovery(void) {
     // 专门创建一个不提交的事务来模拟崩溃
     begin_op();
     struct inode *uncommitted_file = ialloc(ROOTDEV, T_FILE);
+    uint32_t uncommitted_inum = 0;
     if (uncommitted_file) {
+        uncommitted_inum = uncommitted_file->inum;
         uint32_t uncommitted_data = 0xDEADBEEF;
         writei(uncommitted_file, 0, (uint64_t)&uncommitted_data, 0, sizeof(uncommitted_data));
         iupdate(uncommitted_file);
         printf("  Created UNCOMMITTED file (inode %d) - simulating crash\n", uncommitted_file->inum);
         
-        // 注意：这里故意不调用 end_op() 来模拟崩溃
-        // 但这个事务应该被系统自动回滚
+        // 模拟崩溃：手动写入日志头和数据到磁盘（但不提交）
+        // 这模拟了系统在写入日志后、提交前崩溃的情况
+        acquire(&log.lock);
+        if (log.lh.n > 0) {
+            // 写入日志头
+            struct buf *buf = bread(log.dev, log.start);
+            struct logheader *hb = (struct logheader *)buf->data;
+            hb->n = log.lh.n;
+            for (int i = 0; i < log.lh.n; i++) {
+                hb->block[i] = log.lh.block[i];
+            }
+            bwrite(buf);
+            brelse(buf);
+            
+            // 写入日志数据块（模拟commit()的前半部分）
+            for (int tail = 0; tail < log.lh.n; tail++) {
+                struct buf *to = bread(log.dev, log.start + tail + 1);
+                struct buf *from = bread(log.dev, log.lh.block[tail]);
+                // 复制数据（简单的字节复制）
+                for (int i = 0; i < BSIZE; i++) {
+                    to->data[i] = from->data[i];
+                }
+                bwrite(to);
+                brelse(from);
+                brelse(to);
+            }
+            
+            printf("  Wrote log header and data to disk (n=%d) - simulating crash before commit\n", log.lh.n);
+        }
+        release(&log.lock);
+        
+        // 注意：不调用 end_op() 来模拟崩溃
+        // 释放inode引用，但不提交事务
+        iput(uncommitted_file);
     }
     
     // 模拟崩溃：直接重新初始化文件系统
@@ -314,6 +348,7 @@ void test_crash_recovery(void) {
     int corrupted_files = 0;
     
     // 尝试查找之前创建的文件
+    int found_uncommitted = 0;
     for (int i = 1; i < 20; i++) {  // 限制搜索范围
         struct inode *ip = iget(ROOTDEV, i);
         if (ip && ip->type == T_FILE && ip->size > 0) {
@@ -325,20 +360,27 @@ void test_crash_recovery(void) {
                 if (readi(ip, 0, (uint64_t)&read_data, 0, sizeof(read_data)) == sizeof(read_data)) {
                     printf("    File content: 0x%08X\n", read_data);
                     
-                    // 检查是否是我们的测试数据
-                    int is_test_data = 0;
-                    for (int j = 0; j < 3; j++) {
-                        if (read_data == test_data[j]) {
-                            is_test_data = 1;
-                            break;
-                        }
-                    }
-                    
-                    if (is_test_data) {
-                        printf("    ✓ Data intact: 0x%08X\n", read_data);
-                        recovered_files++;
+                    // 检查是否是未提交的文件（应该被回滚）
+                    if (uncommitted_inum > 0 && ip->inum == uncommitted_inum) {
+                        printf("    ✗ ERROR: Uncommitted file found after recovery (should be rolled back)\n");
+                        found_uncommitted = 1;
+                        corrupted_files++;
                     } else {
-                        printf("    ? Unknown data: 0x%08X\n", read_data);
+                        // 检查是否是我们的测试数据
+                        int is_test_data = 0;
+                        for (int j = 0; j < 3; j++) {
+                            if (read_data == test_data[j]) {
+                                is_test_data = 1;
+                                break;
+                            }
+                        }
+                        
+                        if (is_test_data) {
+                            printf("    ✓ Data intact: 0x%08X\n", read_data);
+                            recovered_files++;
+                        } else {
+                            printf("    ? Unknown data: 0x%08X\n", read_data);
+                        }
                     }
                 }
             } else {
@@ -354,11 +396,20 @@ void test_crash_recovery(void) {
     printf("Recovery results:\n");
     printf("  Recovered files: %d\n", recovered_files);
     printf("  Corrupted files: %d\n", corrupted_files);
+    if (uncommitted_inum > 0) {
+        if (found_uncommitted) {
+            printf("  ✗ Uncommitted file (inode %d) was NOT rolled back - recovery failed\n", uncommitted_inum);
+        } else {
+            printf("  ✓ Uncommitted file (inode %d) was properly rolled back\n", uncommitted_inum);
+        }
+    }
     
-    if (recovered_files > 0) {
-        printf("✓ Crash recovery test completed - some data preserved\n");
+    if (recovered_files == 3 && !found_uncommitted) {
+        printf("✓ Crash recovery test PASSED - all committed data preserved, uncommitted data rolled back\n");
+    } else if (recovered_files > 0) {
+        printf("⚠ Crash recovery test - some data preserved but recovery incomplete\n");
     } else {
-        printf("⚠ Crash recovery test - no test data recovered\n");
+        printf("✗ Crash recovery test FAILED - no test data recovered\n");
     }
     
     printf("=== Crash recovery test completed ===\n\n");

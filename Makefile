@@ -13,7 +13,8 @@ SRCS = kernel/entry.S kernel/main.c kernel/uart.c kernel/console.c kernel/printf
        kernel/trap.c kernel/clock.c kernel/trap_entry.S kernel/exception.c \
        	kernel/proc.c kernel/switch.S kernel/priority.c kernel/priority_test.c \
         	kernel/sysproc.c kernel/syscall.c kernel/syscall_test.c kernel/syscall_wrappers.c \
-        	kernel/bio.c kernel/log.c kernel/fs.c kernel/file.c kernel/fs_test.c
+        	kernel/bio.c kernel/log.c kernel/fs.c kernel/file.c kernel/fs_test.c kernel/file_time.c\
+			kernel/file_time_test.c
 
 OBJS = $(SRCS:.S=.o)
 OBJS := $(OBJS:.c=.o)

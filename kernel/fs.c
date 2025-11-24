@@ -309,8 +309,8 @@ static uint32_t bmap(struct inode *ip, uint32_t bn) {
     uint32_t addr = 0, *a;
     struct buf *bp;
 
-    printf("DEBUG bmap: inode=%d, bn=%d, next_free_block=%d\n", 
-        ip->inum, bn, next_free_block);
+    // printf("DEBUG bmap: inode=%d, bn=%d, next_free_block=%d\n", 
+    //     ip->inum, bn, next_free_block);
         
      // 内存保护：检查 next_free_block 是否被破坏
     if (next_free_block > 1000000) {
@@ -318,8 +318,8 @@ static uint32_t bmap(struct inode *ip, uint32_t bn) {
         next_free_block = 5;  // 从上次正常值继续
     }
     
-    printf("DEBUG bmap: inode=%d, bn=%d, next_free_block=%d\n", 
-        ip->inum, bn, next_free_block);
+    // printf("DEBUG bmap: inode=%d, bn=%d, next_free_block=%d\n", 
+    //     ip->inum, bn, next_free_block);
 
 
     if (bn < NDIRECT) {

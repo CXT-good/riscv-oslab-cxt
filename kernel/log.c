@@ -86,17 +86,17 @@ void recover_from_log(void) {
 void begin_op(void) {
     acquire(&log.lock);
     
-    printf("LOG DEBUG: begin_op - before: outstanding=%d, committing=%d\n", 
-           log.outstanding, log.committing);
+    // printf("LOG DEBUG: begin_op - before: outstanding=%d, committing=%d\n", 
+    //        log.outstanding, log.committing);
     
     while (1) {
         if (log.committing) {
-            printf("LOG DEBUG: begin_op waiting for commit\n");
+            // printf("LOG DEBUG: begin_op waiting for commit\n");
             release(&log.lock);
             continue;
         }
         if (log.lh.n + (log.outstanding + 1) * MAXOPBLOCKS > LOGSIZE) {
-            printf("LOG DEBUG: begin_op waiting for log space\n");
+            // printf("LOG DEBUG: begin_op waiting for log space\n");
             release(&log.lock);
             continue;
         }
@@ -104,8 +104,8 @@ void begin_op(void) {
         release(&log.lock);
         break;
     }
-    
-    printf("LOG DEBUG: begin_op - after: outstanding=%d\n", log.outstanding);
+
+    // printf("LOG DEBUG: begin_op - after: outstanding=%d\n", log.outstanding);
 }
 
 void end_op(void) {
@@ -113,30 +113,30 @@ void end_op(void) {
     
     acquire(&log.lock);
     
-    printf("LOG DEBUG: end_op - before: outstanding=%d, committing=%d, lh.n=%d\n",
-           log.outstanding, log.committing, log.lh.n);
+    // printf("LOG DEBUG: end_op - before: outstanding=%d, committing=%d, lh.n=%d\n",
+    //        log.outstanding, log.committing, log.lh.n);
     
     log.outstanding -= 1;
     if (log.committing) {
-        printf("LOG ERROR: committing while outstanding operations\n");
+        // printf("LOG ERROR: committing while outstanding operations\n");
         return;
     }
     if (log.outstanding == 0) {
         do_commit = 1;
         log.committing = 1;
-        printf("LOG DEBUG: Triggering commit, lh.n=%d\n", log.lh.n);
+        // printf("LOG DEBUG: Triggering commit, lh.n=%d\n", log.lh.n);
     } else {
-        printf("LOG DEBUG: Not committing yet, outstanding=%d\n", log.outstanding);
+        // printf("LOG DEBUG: Not committing yet, outstanding=%d\n", log.outstanding);
     }
     release(&log.lock);
     
     if (do_commit) {
-        printf("LOG DEBUG: Starting commit process\n");
+        // printf("LOG DEBUG: Starting commit process\n");
         commit();
         acquire(&log.lock);
         log.committing = 0;
         release(&log.lock);
-        printf("LOG DEBUG: Commit complete\n");
+        // printf("LOG DEBUG: Commit complete\n");
     }
 }
 
@@ -216,5 +216,4 @@ void log_write(struct buf *b) {
     b->disk = 1;  // 标记为已记录到日志
     release(&log.lock);
 }
-
 
