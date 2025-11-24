@@ -49,6 +49,7 @@ struct dinode {
     uint16_t nlink;        // 硬链接计数
     uint32_t size;         // 文件大小（字节）
     uint32_t addrs[NDIRECT+1]; // 数据块地址
+    uint64_t ctime;        // 创建时间戳
 };
 
 // 内存inode结构
@@ -66,6 +67,7 @@ struct inode {
     uint16_t nlink;
     uint32_t size;
     uint32_t addrs[NDIRECT+1];
+    uint64_t ctime;
 };
 
 // 目录项结构

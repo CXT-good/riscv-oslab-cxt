@@ -3,21 +3,17 @@
 #include "printf.h"
 #include "clock.h"
 
-// 使用inode的保留字段或扩展字段来存储时间
-// 这里我们使用一个简单的静态数组来模拟时间存储
-// 在实际系统中应该扩展inode结构
-static uint64_t file_creation_times[NINODE];  // 为每个可能的inode存储创建时间
-
+// static uint64_t file_creation_times[NINODE];  // 为每个可能的inode存储创建时间
 // 文件创建时间记录功能
 void record_file_creation_time(struct inode *ip) {
-    if (!ip || ip->inum >= NINODE || ip->inum < 1) return;
+    if (!ip || ip->inum < 1) return;
     
-    // 获取当前时间（简化实现，使用时钟计数）
+    // 获取当前时间
     uint64_t current_time = 0;
     asm volatile("csrr %0, time" : "=r"(current_time));
     
-    // 存储在静态数组中
-    file_creation_times[ip->inum] = current_time;
+    ip->ctime = current_time;
+    iupdate(ip);  // 立即写回磁盘，确保时间持久化
     
     printf("FILE_TIME: Recorded creation time for inode %d: %lu\n", 
            ip->inum, current_time);
@@ -25,9 +21,9 @@ void record_file_creation_time(struct inode *ip) {
 
 // 获取文件创建时间
 uint64_t get_file_creation_time(struct inode *ip) {
-    if (!ip || ip->inum >= NINODE || ip->inum < 1) return 0;
+    if (!ip || ip->inum < 1) return 0;
     
-    return file_creation_times[ip->inum];
+    return ip->ctime;
 }
 
 // 显示文件时间信息
@@ -60,9 +56,6 @@ int compare_file_ages(struct inode *ip1, struct inode *ip2) {
 
 // 初始化文件时间系统
 void init_file_time_system(void) {
-    // 清零所有时间记录
-    for (int i = 0; i < NINODE; i++) {
-        file_creation_times[i] = 0;
-    }
-    printf("FILE_TIME: File time system initialized\n");
+    // 目前使用 inode 内嵌的时间字段，无需额外初始化
+    printf("FILE_TIME: File time system ready (timestamps stored in inodes)\n");
 }

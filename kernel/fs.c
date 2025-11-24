@@ -106,6 +106,7 @@ static void mkfs(int dev) {
         dip[1 % IPB].type = T_DIR;
         dip[1 % IPB].nlink = 1;
         dip[1 % IPB].size = 0;
+        dip[1 % IPB].ctime = 0;
         // 确保地址数组被清零
         for (int i = 0; i < NDIRECT + 1; i++) {
             dip[1 % IPB].addrs[i] = 0;
@@ -146,6 +147,7 @@ static void iread(struct inode *ip) {
         ip->minor = dip->minor;
         ip->nlink = dip->nlink;
         ip->size = dip->size;
+        ip->ctime = dip->ctime;
         // 确保 addrs 数组被正确初始化，并验证每个地址
         for (int i = 0; i < NDIRECT + 1; i++) {
             ip->addrs[i] = dip->addrs[i];
@@ -197,6 +199,7 @@ struct inode* iget(uint32_t dev, uint32_t inum) {
             for (int i = 0; i < NDIRECT + 1; i++) {
                 ip->addrs[i] = 0;
             }
+            ip->ctime = 0;
             iread(ip);
             return ip;
         }
@@ -243,6 +246,7 @@ struct inode* ialloc(uint32_t dev, uint16_t type) {
             // 找到空闲inode
             memset(dip, 0, sizeof(*dip));
             dip->type = type;
+            dip->ctime = 0;
             log_write(bp);  // 只有修改的块才记录到日志
             brelse(bp);
             struct inode *ip = iget(dev, inum);
@@ -268,6 +272,7 @@ void iupdate(struct inode *ip) {
     dip->nlink = ip->nlink;
     dip->size = ip->size;
     memcpy(dip->addrs, ip->addrs, sizeof(ip->addrs));
+    dip->ctime = ip->ctime;
     log_write(bp);
     brelse(bp);
 }
