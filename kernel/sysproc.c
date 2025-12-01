@@ -408,6 +408,44 @@ int sys_getprocinfo(void) {
     return 0;
 }
 
+// 设置进程优先级
+int sys_setpriority(void) {
+    int pid, value;
+    if (argint(0, &pid) < 0 || argint(1, &value) < 0) {
+        set_syscall_error(SYSERR_INVALID_ARGS);
+        return -1;
+    }
+    
+    int ret = proc_set_priority(pid, value);
+    if (ret == 0) {
+        return 0;
+    }
+    
+    if (ret == -1) {
+        set_syscall_error(SYSERR_INVALID_ARGS);
+    } else {
+        set_syscall_error(SYSERR_NOT_FOUND);
+    }
+    return -1;
+}
+
+// 获取进程优先级
+int sys_getpriority(void) {
+    int pid;
+    if (argint(0, &pid) < 0) {
+        set_syscall_error(SYSERR_INVALID_ARGS);
+        return -1;
+    }
+    
+    int priority = proc_get_priority(pid);
+    if (priority < 0) {
+        set_syscall_error(SYSERR_NOT_FOUND);
+        return -1;
+    }
+    
+    return priority;
+}
+
 // 文件系统相关系统调用
 #define O_RDONLY  0x000
 #define O_WRONLY  0x001

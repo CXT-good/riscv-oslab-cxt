@@ -9,6 +9,7 @@
 #include "syscall_test.h"
 #include "fs_test.h"
 #include "file_time.h"
+#include "priority.h"
 
 void run_file_time_tests(void);
 
@@ -19,10 +20,12 @@ void main(void) {
     // // 运行文件系统测试
     // run_filesystem_tests();
 
-    // 文件创建时间记录
-    run_file_time_tests();
-    
-    
+    // // 文件创建时间记录
+    // run_file_time_tests();
+
+    // 优先级调度测试
+    run_priority_scheduling_tests();
+
     printf("=== All Tests Completed ===\n");
     
     while (1) {

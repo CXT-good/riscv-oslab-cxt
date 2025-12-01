@@ -23,6 +23,22 @@ struct proc *curr_proc = 0;
 static int next_pid = 1;
 static struct context scheduler_context; // 调度器自身的上下文
 
+static void reset_accounting(struct proc *p);
+static void age_runnable_processes(void);
+static struct proc* select_highest_priority(void);
+static inline int clamp_priority(int value);
+static void mlfq_promote(struct proc *p);//mlfq升级
+static void mlfq_demote(struct proc *p);//mlfq降级
+static void mlfq_apply_level(struct proc *p);//mlfq应用级别
+static int mlfq_priority_to_level(int priority);//mlfq优先级转换为级别  
+
+static const int mlfq_time_slices[MLFQ_LEVELS] = {1, 2, 4};// mlfq时间片
+static const int mlfq_level_priorities[MLFQ_LEVELS] = {
+    PRIORITY_MAX,
+    PRIORITY_DEFAULT,
+    PRIORITY_MIN + 2
+};
+
 // 简单的自旋锁
 inline void spin_lock(volatile int *lock) {
     while (__sync_lock_test_and_set(lock, 1)) {}// 原子测试并设置
@@ -60,6 +76,12 @@ void proc_init(void) {
         proc[i].killed = 0;
         proc[i].xstate = 0;// 退出状态
         proc[i].name[0] = '\0';//进程名
+        proc[i].priority = PRIORITY_DEFAULT;
+        proc[i].ticks = 0;
+        proc[i].wait_time = 0;
+        proc[i].queue_level = 0;
+        proc[i].queue_ticks = 0;
+        mlfq_apply_level(&proc[i]);
     }
 
     // 正确初始化调度器上下文
@@ -67,6 +89,102 @@ void proc_init(void) {
     scheduler_context.sp = (uint64_t)alloc_page() + PAGE_SIZE;  // 分配调度器栈
     
     printf("Process: process table initialized\n");
+}
+
+static inline int clamp_priority(int value) {
+    if (value < PRIORITY_MIN) return PRIORITY_MIN;
+    if (value > PRIORITY_MAX) return PRIORITY_MAX;
+    return value;
+}
+
+static int mlfq_priority_to_level(int priority) {
+    if (priority >= PRIORITY_MAX - 1) {
+        return 0;
+    }
+    if (priority >= PRIORITY_DEFAULT) {
+        return 1;
+    }
+    return 2;
+}
+
+static void mlfq_apply_level(struct proc *p) {
+    if (!p) {
+        return;
+    }
+    if (p->queue_level < 0) {
+        p->queue_level = 0;
+    }
+    if (p->queue_level >= MLFQ_LEVELS) {
+        p->queue_level = MLFQ_LEVELS - 1;
+    }
+    p->priority = clamp_priority(mlfq_level_priorities[p->queue_level]);
+}
+
+static void mlfq_promote(struct proc *p) {
+    if (!p) {
+        return;
+    }
+    if (p->queue_level > 0) {
+        int old_level = p->queue_level;
+        int old_priority = p->priority;
+        p->queue_level--;
+        p->queue_ticks = 0;
+        mlfq_apply_level(p);
+        printf("  MLFQ: promoted process %d from level %d (priority %d) to level %d (priority %d)\n",
+               p->pid, old_level, old_priority, p->queue_level, p->priority);
+    }
+}
+
+static void mlfq_demote(struct proc *p) {
+    if (!p) {
+        return;
+    }
+    if (p->queue_level < MLFQ_LEVELS - 1) {
+        p->queue_level++;
+        p->queue_ticks = 0;
+        mlfq_apply_level(p);
+    }
+}
+
+static void reset_accounting(struct proc *p) {
+    if (!p) {
+        return;
+    }
+    p->wait_time = 0;
+}
+
+static void age_runnable_processes(void) {
+    for (int i = 0; i < NPROC; i++) {
+        struct proc *p = &proc[i];
+        if (p->state == RUNNABLE || p->state == SLEEPING) {
+            p->wait_time++;
+            if (p->wait_time >= AGING_THRESHOLD) {
+                printf("  Aging: process %d (state=%d, level=%d) reached threshold (wait_time=%d), promoting\n",
+                       p->pid, p->state, p->queue_level, p->wait_time);
+                p->wait_time = 0;
+                mlfq_promote(p);
+            }
+        }
+    }
+}
+
+static struct proc* select_highest_priority(void) {
+    struct proc *best = 0;
+    for (int i = 0; i < NPROC; i++) {
+        struct proc *p = &proc[i];
+        if (p->state != RUNNABLE) {
+            continue;
+        }
+
+        if (!best ||
+            p->priority > best->priority ||
+            (p->priority == best->priority && p->wait_time > best->wait_time) ||
+            (p->priority == best->priority && p->wait_time == best->wait_time && p->ticks < best->ticks) ||
+            (p->priority == best->priority && p->wait_time == best->wait_time && p->ticks == best->ticks && p->pid < best->pid)) {
+            best = p;
+        }
+    }
+    return best;
 }
 
 
@@ -99,6 +217,12 @@ struct proc* alloc_proc(void) {
         p->parent = curr_proc;
         p->killed = 0;
         p->xstate = 0;
+        p->priority = PRIORITY_DEFAULT;
+        p->ticks = 0;
+        p->wait_time = 0;
+        p->queue_level = 0;
+        p->queue_ticks = 0;
+        mlfq_apply_level(p);
         
         // 手动构建进程名 "procX"
         char *name = p->name;
@@ -172,6 +296,7 @@ int create_process(void (*entry)(void)) {
     
     // 设置为可运行状态
     p->state = RUNNABLE;
+    reset_accounting(p);
     
     printf("Process: created process %d, entry=%p, stack=%p\n", 
            p->pid, (void*)entry, (void*)stack_top);
@@ -192,22 +317,18 @@ void exit_process(int status) {
     curr_proc->state = ZOMBIE;
     curr_proc->killed = 0;
     
-    // 唤醒父进程
     if (curr_proc->parent) {
         wakeup(curr_proc->parent);
     }
     
-    // 直接切回调度器上下文，彻底离开该进程上下文
-    printf("Process %d: yielding to scheduler\n", curr_proc->pid);
-    // 直接调用调度器，而不是上下文切换
-    // struct proc *old_proc = curr_proc;
+    struct proc *p = curr_proc;
     curr_proc = 0;
     
-    // 直接调用调度器，让它选择下一个进程
-    scheduler();
+    // 切换到调度器上下文，调度器负责选择新的运行进程
+    context_switch(&p->context, &scheduler_context);
     
-    // 不应该到达这里
-    printf("ERROR: returned from scheduler after exit!\n");
+    // 不应该返回
+    printf("PANIC: exit_process returned after context switch\n");
     for (;;) { asm volatile("wfi"); }
 }
 
@@ -298,6 +419,8 @@ void sleep(void *chan) {
     
     curr_proc->chan = chan;
     curr_proc->state = SLEEPING;
+    curr_proc->queue_ticks = 0;
+    curr_proc->wait_time = 0;
     yield();//让出CPU
 }
 
@@ -309,15 +432,64 @@ void wakeup(void *chan) {
         if (proc[i].state == SLEEPING && proc[i].chan == chan) {
             proc[i].state = RUNNABLE;
             proc[i].chan = 0;
+            proc[i].wait_time = 0;
+            proc[i].queue_ticks = 0;
         }
     }
     
     spin_unlock(&proc_lock);
 }
 
+int proc_set_priority(int pid, int priority) {
+    if (priority < PRIORITY_MIN || priority > PRIORITY_MAX) {
+        return -1;
+    }
+    
+    spin_lock(&proc_lock);
+    struct proc *target = NULL;
+    for (int i = 0; i < NPROC; i++) {
+        if (proc[i].state != UNUSED && proc[i].pid == pid) {
+            target = &proc[i];
+            break;
+        }
+    }
+    
+    if (!target) {
+        spin_unlock(&proc_lock);
+        return -2;
+    }
+    
+    target->priority = priority;
+    target->queue_level = mlfq_priority_to_level(priority);
+    target->queue_ticks = 0;
+    target->wait_time = 0;
+    mlfq_apply_level(target);
+    spin_unlock(&proc_lock);
+    return 0;
+}
+
+int proc_get_priority(int pid) {
+    int result = -1;
+    spin_lock(&proc_lock);
+    for (int i = 0; i < NPROC; i++) {
+        if (proc[i].state != UNUSED && proc[i].pid == pid) {
+            result = proc[i].priority;
+            break;
+        }
+    }
+    spin_unlock(&proc_lock);
+    return result;
+}
+
 // 主动让出CPU
 void yield(void) {
     if (curr_proc && curr_proc->state == RUNNING) {
+        curr_proc->queue_ticks++;
+        if (curr_proc->queue_level < MLFQ_LEVELS &&
+            curr_proc->queue_ticks >= mlfq_time_slices[curr_proc->queue_level]) {
+            curr_proc->queue_ticks = 0;
+            mlfq_demote(curr_proc);
+        }
         curr_proc->state = RUNNABLE;
     }
     scheduler();
@@ -334,25 +506,19 @@ void scheduler(void) {
     // 开启中断
     asm volatile("csrs mstatus, %0" : : "r" (1 << 3));
     
-    int found = 0;
-    struct proc *p;
-    
     spin_lock(&proc_lock);
+    age_runnable_processes();
+    struct proc *p = select_highest_priority();
     
-    // 查找可运行进程
-    for (p = proc; p < &proc[NPROC]; p++) {
-        if (p->state == RUNNABLE) {
-            found = 1;
-            break;
-        }
-    }
-    
-    if (found) {
-        printf("Scheduler: switching to process %d\n", p->pid);
+    if (p) {
+        printf("Scheduler: switching to process %d (priority=%d, wait=%d, ticks=%d)\n",
+               p->pid, p->priority, p->wait_time, p->ticks);
         printf("  Process %d context: ra=%p, sp=%p\n", 
                p->pid, (void*)p->context.ra, (void*)p->context.sp);
         
         p->state = RUNNING;
+        reset_accounting(p);
+        p->ticks++;
         struct proc *prev_proc = curr_proc;
         curr_proc = p;
         
@@ -369,29 +535,31 @@ void scheduler(void) {
         }
         
         // 切换回来后
-        printf("Scheduler: returned from process %d\n", curr_proc->pid);
-        // curr_proc = 0;
-    } else {
-        // 没有可运行进程
-        spin_unlock(&proc_lock);
-        printf("Scheduler: no runnable processes found\n");
-        
-        // 检查是否有僵尸进程需要清理
-        int zombie_count = 0;
-        spin_lock(&proc_lock);
-        for (int i = 0; i < NPROC; i++) {
-            if (proc[i].state == ZOMBIE) {
-                zombie_count++;
-                printf("  Found zombie process %d\n", proc[i].pid);
-            }
+        if (curr_proc) {
+            printf("Scheduler: returned from process %d\n", curr_proc->pid);
+        } else {
+            printf("Scheduler: returned with no current process\n");
         }
-        spin_unlock(&proc_lock);
-        
-        if (zombie_count > 0) {
-            printf("Scheduler: %d zombie processes waiting to be reaped\n", zombie_count);
-        }
-        
         return;
+    }
+
+    // 没有可运行进程
+    spin_unlock(&proc_lock);
+    printf("Scheduler: no runnable processes found\n");
+    
+    // 检查是否有僵尸进程需要清理
+    int zombie_count = 0;
+    spin_lock(&proc_lock);
+    for (int i = 0; i < NPROC; i++) {
+        if (proc[i].state == ZOMBIE) {
+            zombie_count++;
+            printf("  Found zombie process %d\n", proc[i].pid);
+        }
+    }
+    spin_unlock(&proc_lock);
+    
+    if (zombie_count > 0) {
+        printf("Scheduler: %d zombie processes waiting to be reaped\n", zombie_count);
     }
 }
 

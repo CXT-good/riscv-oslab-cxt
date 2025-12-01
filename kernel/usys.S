@@ -32,3 +32,5 @@ SYSCALL sleep, 16
 SYSCALL uptime, 17
 SYSCALL getppid, 18
 SYSCALL getprocinfo, 19
+SYSCALL setpriority, 21
+SYSCALL getpriority, 22

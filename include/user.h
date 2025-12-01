@@ -19,6 +19,8 @@ int close(int fd);
 int write(int fd, const void* buf, int count);
 int read(int fd, void* buf, int count);
 int sleep(int ticks);
+int setpriority(int pid, int value);//设置进程优先级
+int getpriority(int pid);//获取进程优先级
 
 // 标准库函数
 int strlen(const char* s);

@@ -26,6 +26,8 @@
 #define SYS_getppid  18
 #define SYS_getprocinfo 19  // 新增：获取进程信息
 #define SYS_unlink   20     // 删除文件
+#define SYS_setpriority 21
+#define SYS_getpriority 22
 
 #define SYSCALL_MAX  64
 
@@ -104,6 +106,8 @@ int sys_close(void);
 int sys_unlink(void);
 int sys_brk(void);
 int sys_sbrk(void);
+int sys_setpriority(void);//设置进程优先级
+int sys_getpriority(void);//获取进程优先级
 
 // 辅助函数
 struct proc* myproc(void);

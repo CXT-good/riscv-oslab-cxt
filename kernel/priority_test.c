@@ -2,216 +2,353 @@
 #include "printf.h"
 #include "proc.h"
 #include "priority.h"
-#include "clock.h"
 
-void test_basic_priority(void) {
-    printf("\n=== Basic Priority Scheduling Test ===\n");
-    
-    // 清理之前的进程
+#define MAX_TEST_PROCS 8
+
+struct completion_log {
+    int order[MAX_TEST_PROCS];
+    int count;
+};
+
+static volatile int aging_low_run_count = 0;
+
+// 用于验证 aging 的全局变量
+static volatile int aging_test_low1_initial_priority = -1;
+static volatile int aging_test_low1_final_priority = -1;
+static volatile int aging_test_low2_initial_priority = -1;
+static volatile int aging_test_low2_final_priority = -1;
+static volatile int aging_test_hog_should_stop = 0;
+
+static void busy_spin(int loops) {
+    for (int i = 0; i < loops; i++) {
+        for (volatile int j = 0; j < 5000; j++);
+    }
+}
+
+static void cleanup_all_processes(void) {
     int status;
-    while (wait_process(&status) > 0) {
-        printf("Cleaned up process with status: %d\n", status);
+    int pid;
+    while ((pid = wait_process(&status)) > 0) {
+        printf("  Cleaned zombie pid=%d status=%d\n", pid, status);
+    }
+}
+
+static int has_runnable_process(void) {
+    int active = 0;
+    spin_lock(&proc_lock);
+    for (int i = 0; i < NPROC; i++) {
+        if (proc[i].state == RUNNABLE) {
+            active = 1;
+            break;
+        }
+    }
+    spin_unlock(&proc_lock);
+    return active;
+}
+
+static void drive_scheduler_until_idle(void) {
+    int guard = 0;
+    while (has_runnable_process()) {
+        scheduler();
+        if (++guard > 1024) {
+            printf("  WARNING: scheduler guard triggered, breaking out\n");
+            break;
+        }
+    }
+}
+
+static void collect_completion(struct completion_log *log, int expected) {
+    log->count = 0;
+    int status;
+    for (int i = 0; i < expected; i++) {
+        int pid = wait_process(&status);
+        if (pid <= 0) {
+            break;
+        }
+        log->order[log->count++] = pid;
+    }
+}
+
+static void print_completion(const char *tag, const struct completion_log *log) {
+    printf("  %s completion order:", tag);
+    for (int i = 0; i < log->count; i++) {
+        printf(" %d", log->order[i]);
+    }
+    printf("\n");
+}
+
+static int snapshot_ticks(int pid) {
+    int ticks = -1;
+    spin_lock(&proc_lock);
+    for (int i = 0; i < NPROC; i++) {
+        if (proc[i].pid == pid) {
+            ticks = proc[i].ticks;
+            break;
+        }
+    }
+    spin_unlock(&proc_lock);
+    return ticks;
+}
+
+// ----------- 测试专用任务 -----------
+
+static void high_priority_worker(void) {
+    for (int i = 0; i < 40; i++) {
+        busy_spin(150);
+        if (i % 4 == 0) {
+            yield();
+        }
+    }
+    exit_process(0);
+}
+
+static void low_priority_worker(void) {
+    for (int i = 0; i < 8; i++) {
+        busy_spin(40);
+        yield();
+    }
+    exit_process(0);
+}
+
+static void rr_worker(void) {
+    for (int i = 0; i < 12; i++) {
+        busy_spin(60);
+        yield();
+    }
+    exit_process(0);
+}
+
+// 持续运行的高优先级任务，确保低优先级任务等待足够长时间
+// 关键：每次 yield 后重新设置最高优先级，防止降级
+static void aging_test_hog_worker(void) {
+    int iterations = 0;
+    while (!aging_test_hog_should_stop && iterations < 50) {
+        busy_spin(200);
+        yield();
+        // 重新设置最高优先级，防止被 MLFQ 降级
+        // 这样低优先级任务就会一直等待，直到 wait_time >= 10 触发 aging
+        if (curr_proc) {
+            set_priority(curr_proc->pid, PRIORITY_MAX);
+        }
+        iterations++;
+    }
+    exit_process(0);
+}
+
+// 低优先级任务，检查自己的 priority 是否被提升了
+static void aging_test_low_worker(void) {
+    int pid = curr_proc->pid;
+    int initial_prio = curr_proc->priority;
+    
+    printf("  Aging test low worker pid=%d: initial priority=%d\n", pid, initial_prio);
+    
+    // 保存初始优先级
+    if (pid == aging_test_low1_initial_priority || aging_test_low1_initial_priority == -1) {
+        aging_test_low1_initial_priority = initial_prio;
+        aging_test_low1_final_priority = curr_proc->priority;
+    } else {
+        aging_test_low2_initial_priority = initial_prio;
+        aging_test_low2_final_priority = curr_proc->priority;
     }
     
-    printf("TEST: Creating only ONE process first...\n");
+    aging_low_run_count++;
+    exit_process(0);
+}
+
+// ----------- 具体测试用例 -----------
+
+static void test_priority_gap(void) {
+    printf("\n[T1] 高低优先级对比（高优先级应先完成）\n");
+    cleanup_all_processes();
     
-    // 先只创建一个进程进行测试
-    int high_pid = create_process(high_priority_task);
-    printf("Created process: PID=%d\n", high_pid);
+    int fast = create_process(high_priority_worker);
+    int slow = create_process(low_priority_worker);
+    set_priority(fast, PRIORITY_MAX);
+    set_priority(slow, PRIORITY_MIN + 1);
     
-    // 设置优先级
-    set_priority(high_pid, 10);
+    drive_scheduler_until_idle();
     
-    show_priority_info();
+    struct completion_log log;
+    collect_completion(&log, 2);
+    print_completion("T1", &log);
     
-    printf("Starting priority scheduler with single process...\n");
+    if (log.count >= 1 && log.order[0] == fast) {
+        printf("  [PASS] 高优先级进程 %d 最先完成\n", fast);
+    } else {
+        printf("  [FAIL] 期望 %d 先完成，但实际顺序不同\n", fast);
+    }
     
-    // 只运行一次调度
-    printf("--- Calling priority_scheduler ---\n");
-    priority_scheduler();
-    printf("--- Returned from priority_scheduler ---\n");
+    cleanup_all_processes();
+}
+
+static void test_equal_priority_rr(void) {
+    printf("\n[T2] 相同优先级任务公平性（应近似 RR）\n");
+    cleanup_all_processes();
     
-    // 检查进程状态
-    printf("Checking process states after scheduling...\n");
+    int pids[3];
+    for (int i = 0; i < 3; i++) {
+        pids[i] = create_process(rr_worker);
+        set_priority(pids[i], PRIORITY_DEFAULT);
+    }
+    
+    drive_scheduler_until_idle();
+    
+    int ticks[3];
+    for (int i = 0; i < 3; i++) {
+        ticks[i] = snapshot_ticks(pids[i]);
+    }
+    
+    struct completion_log log;
+    collect_completion(&log, 3);
+    print_completion("T2", &log);
+    
+    int min = ticks[0], max = ticks[0];
+    for (int i = 1; i < 3; i++) {
+        if (ticks[i] < min) min = ticks[i];
+        if (ticks[i] > max) max = ticks[i];
+    }
+    
+    printf("  调度次数 ticks: %d %d %d\n", ticks[0], ticks[1], ticks[2]);
+    if (max - min <= 1) {
+        printf("  [PASS] 调度次数接近，表现与 RR 类似\n");
+    } else {
+        printf("  [WARN] 调度次数差异较大，可进一步检查\n");
+    }
+    
+    cleanup_all_processes();
+}
+
+// 辅助函数：获取进程的 priority 和 queue_level
+static int get_proc_priority(int pid) {
+    int result = -1;
+    spin_lock(&proc_lock);
     for (int i = 0; i < NPROC; i++) {
-        if (proc[i].state != UNUSED) {
-            printf("  Process %d: state=%d\n", proc[i].pid, proc[i].state);
+        if (proc[i].pid == pid) {
+            result = proc[i].priority;
+            break;
+        }
+    }
+    spin_unlock(&proc_lock);
+    return result;
+}
+
+static int get_proc_queue_level(int pid) {
+    int result = -1;
+    spin_lock(&proc_lock);
+    for (int i = 0; i < NPROC; i++) {
+        if (proc[i].pid == pid) {
+            result = proc[i].queue_level;
+            break;
+        }
+    }
+    spin_unlock(&proc_lock);
+    return result;
+}
+
+static void test_aging_prevents_starvation(void) {
+    printf("\n[T3] Aging 防止饥饿（低优先级任务等待超过阈值后升级）\n");
+    cleanup_all_processes();
+    aging_low_run_count = 0;
+    aging_test_hog_should_stop = 0;
+    aging_test_low1_initial_priority = -1;
+    aging_test_low1_final_priority = -1;
+    aging_test_low2_initial_priority = -1;
+    aging_test_low2_final_priority = -1;
+    
+    // 创建高优先级任务，持续运行
+    int hog = create_process(aging_test_hog_worker);
+    set_priority(hog, PRIORITY_MAX);
+    
+    // 创建低优先级任务
+    int low1 = create_process(aging_test_low_worker);
+    int low2 = create_process(aging_test_low_worker);
+    set_priority(low1, PRIORITY_MIN);
+    set_priority(low2, PRIORITY_MIN);
+    
+    // 记录初始状态
+    int low1_initial_prio = get_proc_priority(low1);
+    int low1_initial_level = get_proc_queue_level(low1);
+    int low2_initial_prio = get_proc_priority(low2);
+    int low2_initial_level = get_proc_queue_level(low2);
+    
+    printf("  初始状态: low1(pid=%d) priority=%d level=%d, low2(pid=%d) priority=%d level=%d\n",
+           low1, low1_initial_prio, low1_initial_level,
+           low2, low2_initial_prio, low2_initial_level);
+    
+    // 让高优先级任务运行足够长时间，确保低优先级任务 wait_time >= 10
+    // 每次调度都会在 age_runnable_processes() 中增加 RUNNABLE 进程的 wait_time
+    // 需要运行至少 12 次调度（留一些余量），确保低优先级任务 wait_time >= 10
+    printf("  运行调度器，让低优先级任务累积 wait_time...\n");
+    for (int i = 0; i < 12; i++) {
+        scheduler();
+        // 检查低优先级任务的 wait_time（用于调试）
+        spin_lock(&proc_lock);
+        int low1_wait = -1, low2_wait = -1;
+        for (int j = 0; j < NPROC; j++) {
+            if (proc[j].pid == low1) {
+                low1_wait = proc[j].wait_time;
+            }
+            if (proc[j].pid == low2) {
+                low2_wait = proc[j].wait_time;
+            }
+        }
+        spin_unlock(&proc_lock);
+        if (i % 3 == 0) {
+            printf("    调度 %d: low1 wait_time=%d, low2 wait_time=%d\n", i, low1_wait, low2_wait);
         }
     }
     
-    // 尝试回收进程
-    int pid = wait_process(&status);
-    if (pid > 0) {
-        printf("Process %d completed with status: %d\n", pid, status);
+    // 检查低优先级任务的 priority 和 queue_level 是否被提升了
+    int low1_after_prio = get_proc_priority(low1);
+    int low1_after_level = get_proc_queue_level(low1);
+    int low2_after_prio = get_proc_priority(low2);
+    int low2_after_level = get_proc_queue_level(low2);
+    
+    printf("  Aging后状态: low1 priority=%d level=%d, low2 priority=%d level=%d\n",
+           low1_after_prio, low1_after_level,
+           low2_after_prio, low2_after_level);
+    
+    // 停止高优先级任务，让低优先级任务被调度并完成
+    aging_test_hog_should_stop = 1;
+    
+    // 继续运行直到所有任务完成
+    drive_scheduler_until_idle();
+    
+    struct completion_log log;
+    collect_completion(&log, 3);
+    print_completion("T3", &log);
+    
+    // 验证 aging 是否生效
+    int aging_verified = 0;
+    if (low1_after_prio > low1_initial_prio || low1_after_level < low1_initial_level) {
+        printf("  ✓ low1 的 priority 从 %d 提升到 %d，level 从 %d 降到 %d\n",
+               low1_initial_prio, low1_after_prio, low1_initial_level, low1_after_level);
+        aging_verified++;
+    }
+    if (low2_after_prio > low2_initial_prio || low2_after_level < low2_initial_level) {
+        printf("  ✓ low2 的 priority 从 %d 提升到 %d，level 从 %d 降到 %d\n",
+               low2_initial_prio, low2_after_prio, low2_initial_level, low2_after_level);
+        aging_verified++;
+    }
+    
+    if (aging_verified >= 1 && aging_low_run_count == 2) {
+        printf("  [PASS] Aging 防止饥饿机制生效：低优先级任务等待后成功升级\n");
     } else {
-        printf("No process completed\n");
+        printf("  [FAIL] Aging 未生效：aging_verified=%d, low_run_count=%d\n",
+               aging_verified, aging_low_run_count);
     }
     
-    printf("Single process test completed\n");
-}
-
-// 动态优先级调整测试
-void test_dynamic_priority(void) {
-    printf("\n=== Dynamic Priority Adjustment Test ===\n");
-    
-    // 清理
-    int status;
-    while (wait_process(&status) > 0);
-    
-    // 创建多个CPU密集型进程
-    printf("Creating CPU-intensive processes...\n");
-    int pids[3];
-    
-    for (int i = 0; i < 3; i++) {
-        pids[i] = create_process(cpu_intensive_priority_task);
-        set_priority(pids[i], 5);  // 初始相同优先级
-    }
-    
-    show_priority_info();
-    
-    printf("Running with dynamic priority adjustments...\n");
-    priority_scheduler();
-    
-    // 等待完成
-    for (int i = 0; i < 3; i++) {
-        wait_process(&status);
-        printf("Process %d completed\n", pids[i]);
-    }
-    
-    printf("Dynamic priority test completed\n");
-}
-
-// 友好值(nice)测试
-void test_nice_values(void) {
-    printf("\n=== Nice Values Test ===\n");
-    
-    // 清理
-    int status;
-    while (wait_process(&status) > 0);
-    
-    printf("Testing nice value adjustments...\n");
-    
-    int pid1 = create_process(medium_priority_task);
-    int pid2 = create_process(medium_priority_task);
-    int pid3 = create_process(medium_priority_task);
-    
-    // 设置不同的nice值
-    set_nice(pid1, -10);   // 高优先级
-    set_nice(pid2, 0);     // 普通优先级
-    set_nice(pid3, 10);    // 低优先级
-    
-    show_priority_info();
-    
-    printf("Running processes with different nice values...\n");
-    priority_scheduler();
-    
-    // 等待完成
-    wait_process(&status);
-    wait_process(&status);
-    wait_process(&status);
-    
-    printf("Nice values test completed\n");
-}
-
-// 混合工作负载测试
-void test_mixed_workload(void) {
-    printf("\n=== Mixed Workload Test ===\n");
-    
-    // 清理
-    int status;
-    while (wait_process(&status) > 0);
-    
-    printf("Creating mixed workload (I/O bound and CPU bound)...\n");
-    
-    // 创建混合类型的进程
-    int io_pid = create_process(high_priority_task);      // 高优先级I/O型
-    int cpu_pid1 = create_process(cpu_intensive_priority_task); // CPU型
-    int cpu_pid2 = create_process(cpu_intensive_priority_task); // CPU型
-    int normal_pid = create_process(medium_priority_task); // 普通型
-    
-    // 设置不同的优先级
-    set_priority(io_pid, 9);       // I/O型高优先级
-    set_priority(cpu_pid1, 3);     // CPU型低优先级
-    set_priority(cpu_pid2, 4);     // CPU型较低优先级
-    set_priority(normal_pid, 6);   // 普通型中等优先级
-    
-    show_priority_info();
-    
-    printf("Running mixed workload with priority scheduling...\n");
-    priority_scheduler();
-    
-    // 等待所有进程完成
-    while (wait_process(&status) > 0) {
-        printf("Mixed workload process completed\n");
-    }
-    
-    printf("Mixed workload test completed\n");
-}
-
-// 性能对比测试
-void test_performance_comparison(void) {
-    printf("\n=== Performance Comparison: Round Robin vs Priority ===\n");
-    
-    // 测试1: 轮转调度
-    printf("1. Testing Round Robin scheduling...\n");
-    uint64_t start_time = get_ticks(TIMER_FAST);
-    
-    // 清理
-    int status;
-    while (wait_process(&status) > 0);
-    
-    // 创建测试进程
-    for (int i = 0; i < 3; i++) {
-        create_process(cpu_intensive_priority_task);
-    }
-    
-    // 使用原来的轮转调度器
-    scheduler();
-    
-    while (wait_process(&status) > 0);
-    
-    uint64_t rr_time = get_ticks(TIMER_FAST) - start_time;
-    printf("Round Robin completed in %lu ticks\n", rr_time);
-    
-    // 测试2: 优先级调度
-    printf("2. Testing Priority scheduling...\n");
-    start_time = get_ticks(TIMER_FAST);
-    
-    // 创建相同的工作负载但设置不同优先级
-    int pids[3];
-    for (int i = 0; i < 3; i++) {
-        pids[i] = create_process(cpu_intensive_priority_task);
-        set_priority(pids[i], 3 + i * 2); // 不同优先级
-    }
-    
-    priority_scheduler();
-    
-    while (wait_process(&status) > 0);
-    
-    uint64_t priority_time = get_ticks(TIMER_FAST) - start_time;
-    printf("Priority scheduling completed in %lu ticks\n", priority_time);
-    
-    printf("Performance comparison:\n");
-    printf("  Round Robin:   %lu ticks\n", rr_time);
-    printf("  Priority:      %lu ticks\n", priority_time);
-    printf("  Difference:    %ld ticks (%s)\n", 
-           (long)(priority_time - rr_time),
-           (priority_time < rr_time) ? "Priority faster" : "Round Robin faster");
+    cleanup_all_processes();
 }
 
 // 综合优先级调度测试
 void run_priority_scheduling_tests(void) {
-    printf("\n🔀 STARTING PRIORITY SCHEDULING TESTS\n");
-    
-    // 初始化优先级调度
+    printf("\n=== PRIORITY SCHEDULER TESTS START ===\n");
     priority_init();
     
-    // 运行各种测试
-    // test_basic_priority();
-    // test_dynamic_priority();
-    // test_nice_values();
-    test_mixed_workload();
-    // test_performance_comparison();
+    test_priority_gap();
+    test_equal_priority_rr();
+    test_aging_prevents_starvation();
     
-    printf("\n✅ ALL PRIORITY SCHEDULING TESTS COMPLETED SUCCESSFULLY\n");
+    printf("=== PRIORITY SCHEDULER TESTS END ===\n");
 }
